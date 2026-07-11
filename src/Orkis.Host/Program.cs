@@ -103,10 +103,10 @@ services.AddOrkisPricing(cost =>
 
 foreach (var tool in DemoTools.CreateOrkisTools())
 {
-    services.AddSingleton(tool);
+    services.AddSingleton<ITool>(new ConsoleLoggingTool(tool));
 }
 
-services.AddSingleton<ITool, ShellTool>();
+services.AddSingleton<ITool>(sp => new ConsoleLoggingTool(new ShellTool(sp.GetRequiredService<ISandbox>())));
 
 IChatClient providerClient = offline
     ? new OfflineChatClient()
