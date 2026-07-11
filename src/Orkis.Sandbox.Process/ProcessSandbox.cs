@@ -38,7 +38,7 @@ public sealed class ProcessSandbox : ISandbox
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var scratchDirectory = Path.Combine(_options.WorkingRoot, Guid.CreateVersion7().ToString("n"));
+        var scratchDirectory = SandboxScratch.Locate(_options.WorkingRoot, request.WorkspaceKey);
         var workingDirectory = SandboxScratch.Resolve(scratchDirectory, request.WorkingDirectory);
         Directory.CreateDirectory(workingDirectory);
 
@@ -71,7 +71,10 @@ public sealed class ProcessSandbox : ISandbox
         }
         finally
         {
-            SandboxScratch.TryDelete(scratchDirectory);
+            if (request.WorkspaceKey is null)
+            {
+                SandboxScratch.TryDelete(scratchDirectory);
+            }
         }
     }
 }

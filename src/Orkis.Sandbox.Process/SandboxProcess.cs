@@ -104,6 +104,16 @@ internal static class SandboxProcess
 /// <summary>Shared scratch-directory handling for sandboxes.</summary>
 internal static class SandboxScratch
 {
+    /// <summary>
+    /// Picks the scratch root for an execution: the workload's persistent workspace
+    /// directory when a key is given (shared by every execution with that key, kept
+    /// afterwards), or a fresh throwaway directory when not.
+    /// </summary>
+    public static string Locate(string workingRoot, string? workspaceKey) =>
+        workspaceKey is { } key
+            ? Path.Combine(workingRoot, "workspaces", SafePathNames.For(key))
+            : Path.Combine(workingRoot, Guid.CreateVersion7().ToString("n"));
+
     /// <summary>Resolves the requested working directory inside the scratch root, rejecting escapes.</summary>
     public static string Resolve(string scratchDirectory, string? requested)
     {

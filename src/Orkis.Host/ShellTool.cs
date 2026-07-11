@@ -11,7 +11,7 @@ namespace Orkis.Host;
 /// sandbox is present), while a supervisor requiring isolation forces a stronger one.
 /// Declared destructive, and implements <see cref="ISandboxedTool"/> so the requirement reaches it.
 /// </summary>
-public sealed class ShellTool(IEnumerable<ISandbox> sandboxes) : ISandboxedTool
+public sealed class ShellTool(IEnumerable<ISandbox> sandboxes, string? workspaceKey = null) : ISandboxedTool
 {
     private readonly IReadOnlyList<ISandbox> _sandboxes = [.. sandboxes];
 
@@ -68,6 +68,7 @@ public sealed class ShellTool(IEnumerable<ISandbox> sandboxes) : ISandboxedTool
                     Executable = "/bin/sh",
                     Arguments = ["-c", command],
                     Timeout = TimeSpan.FromSeconds(30),
+                    WorkspaceKey = workspaceKey,
                 },
                 cancellationToken
             )

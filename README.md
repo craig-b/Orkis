@@ -17,6 +17,7 @@ description of direction rather than a status checklist.
 - **RAG** — retrieval-augmented generation over your own data, with pluggable vector store backends and a first-class ingestion pipeline (parsing, chunking, embedding)
 - **Reranking** — second-stage relevance scoring to sharpen retrieval results before they reach the model
 - **Sandboxed execution** — run model-generated code and untrusted tool operations in isolation, with graduated sandbox levels
+- **Workspaces** — persistent per-sandbox working storage scoped to a workload: files survive across commands, runs, and restarts, and cross isolation boundaries only through explicit artifact promotion
 - **Supervision** — pluggable approval policies for agent actions: human-in-the-loop, AI supervisor, rules-based, or fully autonomous ("yolo") — with the required sandbox level driven by the supervision decision
 - **Durable execution** — agent runs checkpoint after every step and can be resumed after a crash, restart, or long pause (including pauses awaiting supervision decisions)
 - **Memory** — long-term, agent-written memory as a first-class concept, distinct from corpus retrieval
@@ -83,6 +84,11 @@ The demo auto-selects the strongest available sandbox — Firecracker micro-VMs
 (requires KVM; run `scripts/setup-firecracker.sh` once to provision the guest
 kernel and rootfs), then bubblewrap, then plain process isolation — overridable
 with `ORKIS_SANDBOX=firecracker|bubblewrap|process`.
+
+Shell commands run in a persistent workspace scoped per sandbox type
+(`ORKIS_WORKSPACE` names it; `default` otherwise), so files written by one command
+— or one run — are still there for the next, even across a Firecracker VM's
+boot-per-command lifecycle.
 
 Runs checkpoint to disk after every step (under the local application data
 directory; override with `ORKIS_CHECKPOINT_DIR`), so an interrupted run — crash,

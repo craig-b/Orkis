@@ -10,6 +10,12 @@ public sealed class FirecrackerSandboxOptions
     public string MkfsPath { get; set; } = "mkfs.ext4";
 
     /// <summary>
+    /// Path to the debugfs binary (e2fsprogs), used to inject each execution's command
+    /// script into a persistent workspace image without mounting it.
+    /// </summary>
+    public string DebugfsPath { get; set; } = "debugfs";
+
+    /// <summary>
     /// Path to the uncompressed guest kernel (vmlinux). Required.
     /// scripts/setup-firecracker.sh downloads a suitable one.
     /// </summary>

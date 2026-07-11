@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -8,7 +9,10 @@ namespace Orkis.Sandboxing;
 /// <summary>
 /// Executes each command in its own Firecracker micro-VM: a hardware-virtualized
 /// boundary (KVM) with a read-only root filesystem, a private writable /work drive,
-/// and no network device. The VM boots, runs the command, and is destroyed.
+/// and no network device. The VM boots, runs the command, and is destroyed. With a
+/// <see cref="SandboxExecutionRequest.WorkspaceKey"/>, /work is a persistent per-key
+/// image reused across executions, so files survive between commands; without one it
+/// is a throwaway scratch.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -30,6 +34,12 @@ public sealed class FirecrackerSandbox : ISandbox
     private const string StdoutMarker = "===ORKIS:STDOUT===";
     private const string StderrMarker = "===ORKIS:STDERR===";
     private const string ExitMarker = "===ORKIS:EXIT:";
+
+    // A rw ext4 image attached to two VMs at once corrupts; executions sharing a
+    // persistent workspace serialize on a per-image gate. In-VM concurrency (one
+    // machine, many processes) is the model's business; two machines on one disk
+    // is not survivable and is ours.
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> WorkspaceGates = new();
 
     private readonly FirecrackerSandboxOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -77,35 +87,123 @@ public sealed class FirecrackerSandbox : ISandbox
         {
             WriteCommandScript(request, stagingDirectory);
 
+            if (request.WorkspaceKey is { } key)
+            {
+                var workspacesDirectory = Path.Combine(_options.WorkingRoot, "workspaces");
+                Directory.CreateDirectory(workspacesDirectory);
+                var workspaceImage = Path.GetFullPath(
+                    Path.Combine(workspacesDirectory, SafePathNames.For(key) + ".ext4")
+                );
+
+                var gate = WorkspaceGates.GetOrAdd(workspaceImage, static _ => new SemaphoreSlim(1, 1));
+                await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    if (File.Exists(workspaceImage))
+                    {
+                        var scriptPath = Path.Combine(stagingDirectory, ".orkis", "command.sh");
+                        await InjectCommandScriptAsync(workspaceImage, scriptPath, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await BuildScratchImageAsync(stagingDirectory, workspaceImage, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    return await BootAndRunAsync(request, executionDirectory, workspaceImage, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            }
+
             var scratchImage = Path.Combine(executionDirectory, "scratch.ext4");
             await BuildScratchImageAsync(stagingDirectory, scratchImage, cancellationToken).ConfigureAwait(false);
-
-            var configPath = Path.Combine(executionDirectory, "vm.json");
-            await File.WriteAllTextAsync(configPath, BuildVmConfig(scratchImage), cancellationToken)
+            return await BootAndRunAsync(request, executionDirectory, scratchImage, cancellationToken)
                 .ConfigureAwait(false);
-
-            var startInfo = new ProcessStartInfo { FileName = _options.FirecrackerPath };
-            startInfo.ArgumentList.Add("--no-api");
-            startInfo.ArgumentList.Add("--config-file");
-            startInfo.ArgumentList.Add(configPath);
-
-            var outcome = await FirecrackerProcess
-                .RunAsync(
-                    startInfo,
-                    request.Timeout ?? _options.DefaultTimeout,
-                    // The console carries boot noise plus both streams; keep headroom.
-                    (_options.MaxOutputLength * 2) + 4096,
-                    _timeProvider,
-                    cancellationToken
-                )
-                .ConfigureAwait(false);
-
-            return ParseConsole(outcome);
         }
         finally
         {
             TryDeleteDirectory(executionDirectory);
         }
+    }
+
+    private async Task<SandboxExecutionResult> BootAndRunAsync(
+        SandboxExecutionRequest request,
+        string executionDirectory,
+        string scratchImagePath,
+        CancellationToken cancellationToken
+    )
+    {
+        var configPath = Path.Combine(executionDirectory, "vm.json");
+        await File.WriteAllTextAsync(configPath, BuildVmConfig(scratchImagePath), cancellationToken)
+            .ConfigureAwait(false);
+
+        var startInfo = new ProcessStartInfo { FileName = _options.FirecrackerPath };
+        startInfo.ArgumentList.Add("--no-api");
+        startInfo.ArgumentList.Add("--config-file");
+        startInfo.ArgumentList.Add(configPath);
+
+        var outcome = await FirecrackerProcess
+            .RunAsync(
+                startInfo,
+                request.Timeout ?? _options.DefaultTimeout,
+                // The console carries boot noise plus both streams; keep headroom.
+                (_options.MaxOutputLength * 2) + 4096,
+                _timeProvider,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+
+        return ParseConsole(outcome);
+    }
+
+    /// <summary>
+    /// Places this execution's command script at /.orkis/command.sh inside an existing
+    /// unmounted workspace image, via debugfs so no mount (and no root) is needed.
+    /// </summary>
+    private async Task InjectCommandScriptAsync(
+        string imagePath,
+        string scriptPath,
+        CancellationToken cancellationToken
+    )
+    {
+        // mkdir and rm fail harmlessly when the directory already exists or the file is
+        // absent, and debugfs exits 0 even when a request fails — correctness rests on
+        // the stat verification at the end.
+        await RunDebugfsAsync(imagePath, "mkdir /.orkis", cancellationToken).ConfigureAwait(false);
+        await RunDebugfsAsync(imagePath, "rm /.orkis/command.sh", cancellationToken).ConfigureAwait(false);
+        await RunDebugfsAsync(imagePath, $"write {scriptPath} /.orkis/command.sh", cancellationToken)
+            .ConfigureAwait(false);
+
+        var stat = await RunDebugfsAsync(imagePath, "stat /.orkis/command.sh", cancellationToken)
+            .ConfigureAwait(false);
+        if (!stat.StandardOutput.Contains("Type: regular", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Injecting the command script into workspace image '{imagePath}' failed: {stat.StandardError}"
+            );
+        }
+    }
+
+    private async Task<FirecrackerProcess.Outcome> RunDebugfsAsync(
+        string imagePath,
+        string requestText,
+        CancellationToken cancellationToken
+    )
+    {
+        var startInfo = new ProcessStartInfo { FileName = _options.DebugfsPath };
+        startInfo.ArgumentList.Add("-w");
+        startInfo.ArgumentList.Add("-R");
+        startInfo.ArgumentList.Add(requestText);
+        startInfo.ArgumentList.Add(imagePath);
+
+        return await FirecrackerProcess
+            .RunAsync(startInfo, TimeSpan.FromSeconds(30), 8192, _timeProvider, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private void WriteCommandScript(SandboxExecutionRequest request, string stagingDirectory)
@@ -131,6 +229,7 @@ public sealed class FirecrackerSandbox : ISandbox
             }
 
             Directory.CreateDirectory(Path.Combine(stagingDirectory, requested));
+            script.Append("mkdir -p ").AppendLine(ShellQuote(requested));
             script.Append("cd ").AppendLine(ShellQuote(requested));
         }
 

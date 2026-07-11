@@ -17,14 +17,19 @@ The through-lines these ideas are meant to respect:
    interface in the abstractions package with concrete backends chosen at the
    composition root. New backends never depend on each other.
 2. **Supervision is the single choke point for capability grants.** Sandbox isolation
-   level, network reach, and (future) cross-level workspace mounts are three facets of
+   level, network reach, and (future) artifact promotion/staging are three facets of
    one trust lattice. Each is granted per run, and every grant is auditable in the
    trace. Adding a capability means adding a facet the supervisor can grant — never an
    ambient default.
-3. **Separate state from compute.** Durable, mountable workspaces keep compute
-   disposable (the security win of per-execution sandboxes) while state lives somewhere
-   any sandbox can mount. Build storage before long-running sessions; durable-backed
-   state largely dissolves the "my environment disappeared" problem.
+3. **Separate state from compute; storage is sandbox-local.** Every sandbox type keeps
+   persistent per-workload storage in its own native representation (host directory,
+   ext4 image) — built as `SandboxExecutionRequest.WorkspaceKey`. Storage never crosses
+   isolation levels; files move between levels only through explicit, supervisable
+   artifact promotion. Compute stays disposable: a dead VM loses only memory state,
+   because the disk survives it. This deleted the portable-workspace design's hard
+   problems (representation conversion, sync semantics, distributed locking) — the one
+   residual is that a rw image must not be attached to two VMs at once, handled by
+   serializing executions per workspace image.
 4. **Eviction is a first-class, typed outcome, not a crash.** Retention is a host
    policy. The model references things (workspaces, sessions, checkpoints) by id and
    never owns their lifecycle; operating on a gone one returns "no longer exists" so the
@@ -35,12 +40,21 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 1 — Near-term (well-specified, clear next steps)
 
-- **Workspaces — Layer 1: durable, mountable working directory** `[idea]` — an
-  `IWorkspace` that outlives a single execution; the sandbox mounts it instead of a
-  throwaway scratch. Backends: host directory (bind-mount), block image (Firecracker
-  `/dev/vdb`), object-storage-backed. The "build first" item; the largest in this tier.
-  Open sub-decisions: virtio-fs vs image-sync for cross-sandbox portability; the
-  concurrency/locking model (one rw image can't be co-mounted).
+- **Artifact store + promote/stage tools** `[idea]` — `IArtifactStore` (filesystem
+  backend first, S3-compatible later for the compose stack) plus two ordinary `ITool`s:
+  `promote_artifact(path, name)` pulls a file out of the current workspace into the
+  store, `stage_artifact(name, path)` copies one in. Orchestrator-mediated transfer —
+  sandboxed code never holds store credentials: a host-directory workspace is a file
+  copy, a Firecracker image is read/written with `debugfs` while cold (or via the guest
+  agent while warm). Promotion is the trust gate: the only way untrusted output rises,
+  as a supervisable, auditable tool call. Staging is the future confidentiality gate.
+- **Firecracker guest agent + VM reuse** `[idea]` — a small agent inside the guest
+  (vsock exec protocol: run command, stream stdout/stderr/exit) so one VM per
+  (workspace, sandbox type) serves many commands: boot latency amortised, in-memory
+  state (installed packages, warm caches) persists between commands, and concurrent
+  commands become ordinary in-OS concurrency with error messages models already
+  understand. Idle timeout destroys the VM; the workspace image survives, so loss is
+  memory-only. Replaces today's boot-per-command model when present.
 - **Firecracker networking — Phase 1: restricted egress** `[scaffold]` — TAP + NAT with
   a hardened nftables ruleset that blocks the host, RFC1918 ranges, link-local, and the
   cloud metadata address, allowing only public egress. Unlocks `curl`/`pip`. `[scaffold]`
@@ -86,16 +100,16 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 3 — Exploratory (needs more design; security- or complexity-heavy)
 
-- **Workspace information-flow / trust-lattice policy** `[idea]` — workspaces carry a
-  trust label and a flow policy (isolated / may-flow-down / …). Integrity (don't let
-  untrusted output rise to trusted contexts) and confidentiality (don't let secrets sink
-  into untrusted code) pull in opposite directions; default to compartmentalisation with
-  explicit, supervision-granted cross-level mounts.
-- **Long-running sessions (warm compute)** `[idea]` — create/run/destroy sandbox tools for
-  state that lives in memory rather than on disk (dev servers, REPLs). Hardest lifecycle
-  problem; the disappearance problem bites most here.
-- **Artifacts** `[idea]` — curated outputs promoted out of a workspace, with a "publish"
-  step. Distinct from the workspace scratch.
+- **Artifact staging confidentiality gate** `[idea]` — what remains of the old
+  trust-lattice question after sandbox-local storage resolved the integrity half by
+  construction (untrusted output rises only via supervised promotion). The residual:
+  once artifacts can contain secrets, *staging* one into a low-trust sandbox needs its
+  own supervision facet. The orchestrator-mediated staging design already gives it a
+  choke point.
+- **Long-running sessions (dev servers, REPLs)** `[idea]` — what remains beyond the
+  Tier 1 guest agent: exposing session lifecycle to the *model* (background processes,
+  port forwarding, attach/detach). Much softened now that disk state survives VM death —
+  the disappearance problem is memory-only.
 - **Firecracker networking — Phase 2: domain allowlist** `[idea]` — an SNI-filtering egress
   proxy (no TLS interception) plus DNS control, for per-run domain scoping.
 - **Sandbox capability advertising** `[idea]` — a `SandboxCapabilities` surface (network
@@ -110,7 +124,7 @@ The through-lines these ideas are meant to respect:
   a preconfigured docker-compose-style stack — the daemon, a web UI, Postgres, and an
   S3-compatible object store (e.g. MinIO) — plus a TUI client that connects from outside.
   Postgres pulls multi-duty behind several abstractions (checkpoint store, pgvector
-  retrieval, memory, supervision queue); the object store backs workspaces and artifacts.
+  retrieval, memory, supervision queue); the object store backs the artifact store.
   Depends on the daemon + client protocol. Its real value today is as design pressure:
   every abstraction must eventually have an out-of-process, shared-infrastructure
   backend, so no interface may assume in-memory or single-process state. Note: compose

@@ -44,6 +44,54 @@ public sealed class FirecrackerSandboxTests
     }
 
     [Fact]
+    public async Task WorkspaceFilesPersistAcrossVmBoots()
+    {
+        if (!Available)
+        {
+            return;
+        }
+
+        var workingRoot = Path.Combine(Path.GetTempPath(), $"orkis-fc-ws-{Guid.NewGuid():n}");
+        try
+        {
+            var sandbox = new FirecrackerSandbox(
+                Options.Create(
+                    new FirecrackerSandboxOptions
+                    {
+                        KernelImagePath = KernelPath,
+                        RootfsImagePath = RootfsPath,
+                        WorkingRoot = workingRoot,
+                    }
+                )
+            );
+
+            var write = await sandbox.ExecuteAsync(
+                Shell("echo persisted-across-boots > note.txt") with
+                {
+                    WorkspaceKey = "chat-1",
+                }
+            );
+            Assert.Equal(0, write.ExitCode);
+
+            // A separate boot of a separate VM on the same workspace image.
+            var read = await sandbox.ExecuteAsync(Shell("cat note.txt") with { WorkspaceKey = "chat-1" });
+
+            Assert.Equal(0, read.ExitCode);
+            Assert.Equal("persisted-across-boots", read.StandardOutput.Trim());
+
+            var other = await sandbox.ExecuteAsync(Shell("cat note.txt") with { WorkspaceKey = "chat-2" });
+            Assert.NotEqual(0, other.ExitCode);
+        }
+        finally
+        {
+            if (Directory.Exists(workingRoot))
+            {
+                Directory.Delete(workingRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task RunsCommandInMicroVmAndCapturesOutput()
     {
         if (!Available)

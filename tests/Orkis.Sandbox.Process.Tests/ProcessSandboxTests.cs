@@ -32,6 +32,56 @@ public sealed class ProcessSandboxTests : IDisposable
         };
 
     [Fact]
+    public async Task WorkspaceFilesPersistAcrossExecutionsAndInstances()
+    {
+        var request = Shell("echo persisted > note.txt") with { WorkspaceKey = "chat-1" };
+        await CreateSandbox().ExecuteAsync(request);
+
+        var read = await CreateSandbox().ExecuteAsync(Shell("cat note.txt") with { WorkspaceKey = "chat-1" });
+
+        Assert.Equal(0, read.ExitCode);
+        Assert.Equal("persisted", read.StandardOutput.Trim());
+    }
+
+    [Fact]
+    public async Task DistinctWorkspaceKeysAreIsolated()
+    {
+        var sandbox = CreateSandbox();
+        await sandbox.ExecuteAsync(Shell("echo secret > note.txt") with { WorkspaceKey = "chat-1" });
+
+        var other = await sandbox.ExecuteAsync(Shell("cat note.txt") with { WorkspaceKey = "chat-2" });
+
+        Assert.NotEqual(0, other.ExitCode);
+    }
+
+    [Fact]
+    public async Task WithoutAWorkspaceKeyTheScratchIsDeleted()
+    {
+        var sandbox = CreateSandbox();
+        await sandbox.ExecuteAsync(Shell("echo gone > note.txt"));
+
+        var again = await sandbox.ExecuteAsync(Shell("cat note.txt"));
+
+        Assert.NotEqual(0, again.ExitCode);
+        Assert.DoesNotContain(
+            Directory.GetDirectories(_workingRoot),
+            d => !d.EndsWith("workspaces", StringComparison.Ordinal)
+        );
+    }
+
+    [Fact]
+    public async Task HostileWorkspaceKeysStayInsideTheWorkingRoot()
+    {
+        var request = Shell("echo contained > note.txt") with { WorkspaceKey = "../../etc/escape" };
+        var result = await CreateSandbox().ExecuteAsync(request);
+
+        Assert.Equal(0, result.ExitCode);
+        var fullRoot = Path.GetFullPath(_workingRoot);
+        var file = Assert.Single(Directory.EnumerateFiles(fullRoot, "note.txt", SearchOption.AllDirectories));
+        Assert.StartsWith(fullRoot + Path.DirectorySeparatorChar, file, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ReportsStandardIsolationLevel() => Assert.Equal(SandboxLevel.Standard, CreateSandbox().Level);
 
     [Fact]

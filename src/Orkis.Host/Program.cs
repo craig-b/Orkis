@@ -220,7 +220,11 @@ foreach (var tool in DemoTools.CreateOrkisTools())
     services.AddSingleton<ITool>(new ConsoleLoggingTool(tool));
 }
 
-services.AddSingleton<ITool>(sp => new ConsoleLoggingTool(new ShellTool(sp.GetServices<ISandbox>())));
+// Shell commands share one persistent workspace per sandbox type: files written by
+// one command are there for the next, across runs and restarts. Files never move
+// between sandbox types — that is what artifact promotion (roadmap) is for.
+var workspace = Environment.GetEnvironmentVariable("ORKIS_WORKSPACE") ?? "default";
+services.AddSingleton<ITool>(sp => new ConsoleLoggingTool(new ShellTool(sp.GetServices<ISandbox>(), workspace)));
 
 IChatClient providerClient = offline
     ? new OfflineChatClient()
@@ -277,6 +281,7 @@ else
     Console.WriteLine($"mode: {(offline ? "offline (scripted model)" : $"live ({provider}: {model})")}");
     Console.WriteLine($"supervision: {request.SupervisorKey}");
     Console.WriteLine($"sandbox: {sandbox} isolation + host execution ([h]/[s] at each prompt)");
+    Console.WriteLine($"workspace: {workspace} (persistent per sandbox type; ORKIS_WORKSPACE overrides)");
     Console.WriteLine($"checkpoints: {checkpointDir} (interrupted? resume with --resume {request.RunId})");
     Console.WriteLine($"prompt: {prompt}");
     Console.WriteLine();

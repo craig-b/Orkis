@@ -40,7 +40,7 @@ public sealed class BubblewrapSandbox : ISandbox
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var scratchDirectory = Path.Combine(_options.WorkingRoot, Guid.CreateVersion7().ToString("n"));
+        var scratchDirectory = SandboxScratch.Locate(_options.WorkingRoot, request.WorkspaceKey);
         var outsideWorkingDirectory = SandboxScratch.Resolve(scratchDirectory, request.WorkingDirectory);
         Directory.CreateDirectory(outsideWorkingDirectory);
 
@@ -58,7 +58,10 @@ public sealed class BubblewrapSandbox : ISandbox
         }
         finally
         {
-            SandboxScratch.TryDelete(scratchDirectory);
+            if (request.WorkspaceKey is null)
+            {
+                SandboxScratch.TryDelete(scratchDirectory);
+            }
         }
     }
 
