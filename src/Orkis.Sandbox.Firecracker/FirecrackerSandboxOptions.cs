@@ -35,6 +35,12 @@ public sealed class FirecrackerSandboxOptions
     /// <summary>Size of the writable /work scratch image, in MiB.</summary>
     public int ScratchSizeMib { get; set; } = 64;
 
+    /// <summary>
+    /// Network access granted to the micro-VM. Only <see cref="NetworkPolicy.None"/> is
+    /// implemented; configuring any other mode fails fast. See <see cref="NetworkPolicy"/>.
+    /// </summary>
+    public NetworkPolicy Network { get; set; } = NetworkPolicy.None;
+
     /// <summary>Timeout applied when a request does not specify one.</summary>
     public TimeSpan DefaultTimeout { get; set; } = TimeSpan.FromSeconds(60);
 

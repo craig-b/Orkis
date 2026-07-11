@@ -48,6 +48,14 @@ public sealed class FirecrackerSandbox : ISandbox
                 nameof(options)
             );
         }
+
+        if (_options.Network.Mode != NetworkMode.None)
+        {
+            throw new NotSupportedException(
+                $"Network mode {_options.Network.Mode} is not yet implemented; only NetworkMode.None is supported. "
+                    + "The micro-VM is configured with no network device."
+            );
+        }
     }
 
     /// <inheritdoc />
@@ -191,6 +199,7 @@ public sealed class FirecrackerSandbox : ISandbox
                     ["is_read_only"] = false,
                 },
             },
+            // No "network-interfaces": NetworkPolicy.None means the VM has no NIC at all.
             ["machine-config"] = new Dictionary<string, object>
             {
                 ["vcpu_count"] = _options.VcpuCount,
