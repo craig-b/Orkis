@@ -5,6 +5,25 @@ using Orkis.Tools;
 
 namespace Orkis.Core.Tests;
 
+/// <summary>Builders for scripted chat responses.</summary>
+internal static class TestResponses
+{
+    public static ChatResponse Text(string text, long inputTokens = 10, long outputTokens = 5) =>
+        new(new ChatMessage(ChatRole.Assistant, text))
+        {
+            Usage = new UsageDetails { InputTokenCount = inputTokens, OutputTokenCount = outputTokens },
+        };
+
+    public static ChatResponse ToolCall(string callId, string toolName)
+    {
+        FunctionCallContent callContent = new(callId, toolName, new Dictionary<string, object?> { ["arg"] = "value" });
+        return new(new ChatMessage(ChatRole.Assistant, [callContent]))
+        {
+            Usage = new UsageDetails { InputTokenCount = 10, OutputTokenCount = 5 },
+        };
+    }
+}
+
 /// <summary>An <see cref="IChatClient"/> that replays scripted responses in order.</summary>
 internal sealed class FakeChatClient : IChatClient
 {

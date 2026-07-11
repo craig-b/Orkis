@@ -20,20 +20,10 @@ public sealed class AgentRunnerTests : IDisposable
 
     private AgentRunner CreateRunner() => new(_chatClient, [_tool], _resolver, _checkpointStore, TimeProvider.System);
 
-    private static ChatResponse TextResponse(string text, long inputTokens = 10, long outputTokens = 5) =>
-        new(new ChatMessage(ChatRole.Assistant, text))
-        {
-            Usage = new UsageDetails { InputTokenCount = inputTokens, OutputTokenCount = outputTokens },
-        };
+    private static ChatResponse TextResponse(string text) => TestResponses.Text(text);
 
-    private static ChatResponse ToolCallResponse(string callId, string toolName)
-    {
-        FunctionCallContent callContent = new(callId, toolName, new Dictionary<string, object?> { ["arg"] = "value" });
-        return new(new ChatMessage(ChatRole.Assistant, [callContent]))
-        {
-            Usage = new UsageDetails { InputTokenCount = 10, OutputTokenCount = 5 },
-        };
-    }
+    private static ChatResponse ToolCallResponse(string callId, string toolName) =>
+        TestResponses.ToolCall(callId, toolName);
 
     [Fact]
     public async Task CompletesWhenModelReturnsNoToolCalls()

@@ -1,8 +1,10 @@
 using System.Collections.Frozen;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.AI;
 using Orkis.Core.Tools;
+using Orkis.Diagnostics;
 using Orkis.Runs;
 using Orkis.Sandboxing;
 using Orkis.Supervision;
@@ -99,6 +101,38 @@ public sealed class AgentRunner
     private async Task<AgentRunResult> RunLoopAsync(AgentRunState state, CancellationToken cancellationToken)
     {
         var segmentStart = _timeProvider.GetTimestamp();
+
+        using var activity = OrkisInstrumentation.ActivitySource.StartActivity(OrkisTelemetry.RunActivityName);
+        activity?.SetTag("orkis.run.id", state.RunId);
+        activity?.SetTag("orkis.supervisor.key", state.SupervisorKey);
+
+        try
+        {
+            var result = await RunSegmentAsync(state, segmentStart, cancellationToken).ConfigureAwait(false);
+
+            activity?.SetTag("orkis.run.status", result.Status.ToString());
+            activity?.SetTag("gen_ai.usage.input_tokens", result.Usage.InputTokens);
+            activity?.SetTag("gen_ai.usage.output_tokens", result.Usage.OutputTokens);
+            OrkisInstrumentation.SegmentDuration.Record(
+                _timeProvider.GetElapsedTime(segmentStart).TotalSeconds,
+                new TagList { { "orkis.run.status", result.Status.ToString() } }
+            );
+            return result;
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddException(ex);
+            throw;
+        }
+    }
+
+    private async Task<AgentRunResult> RunSegmentAsync(
+        AgentRunState state,
+        long segmentStart,
+        CancellationToken cancellationToken
+    )
+    {
         var supervisor = _supervisorResolver.Resolve(state.SupervisorKey);
 
         while (true)
@@ -148,8 +182,23 @@ public sealed class AgentRunner
 
             if (response.Usage is { } usage)
             {
-                state.InputTokens += usage.InputTokenCount ?? 0;
-                state.OutputTokens += usage.OutputTokenCount ?? 0;
+                var inputTokens = usage.InputTokenCount ?? 0;
+                var outputTokens = usage.OutputTokenCount ?? 0;
+                state.InputTokens += inputTokens;
+                state.OutputTokens += outputTokens;
+
+                if (inputTokens > 0)
+                {
+                    OrkisInstrumentation.Tokens.Add(inputTokens, new TagList { { "orkis.token.direction", "input" } });
+                }
+
+                if (outputTokens > 0)
+                {
+                    OrkisInstrumentation.Tokens.Add(
+                        outputTokens,
+                        new TagList { { "orkis.token.direction", "output" } }
+                    );
+                }
             }
 
             var toolCalls = response
@@ -187,8 +236,65 @@ public sealed class AgentRunner
     {
         if (!_tools.TryGetValue(toolCall.ToolName, out var tool))
         {
+            RecordToolCall(toolCall.ToolName, "unknown_tool");
             return Error(toolCall, $"Unknown tool '{toolCall.ToolName}'.");
         }
+
+        var decision = await ReviewAsync(state, supervisor, toolCall, tool, cancellationToken).ConfigureAwait(false);
+
+        if (decision.Verdict == SupervisionVerdict.Pending)
+        {
+            return null;
+        }
+
+        if (decision.Verdict == SupervisionVerdict.Denied)
+        {
+            RecordToolCall(toolCall.ToolName, "denied");
+            return Error(toolCall, $"Tool call denied by supervisor: {decision.Reason ?? "no reason given"}");
+        }
+
+        if (decision.RequiredSandboxLevel is { } level && tool is not ISandboxedTool)
+        {
+            RecordToolCall(toolCall.ToolName, "sandbox_rejected");
+            return Error(
+                toolCall,
+                $"Supervisor requires sandbox level {level}, but tool '{toolCall.ToolName}' cannot run sandboxed."
+            );
+        }
+
+        state.ToolCallCount++;
+
+        using var activity = OrkisInstrumentation.ActivitySource.StartActivity(
+            $"{OrkisTelemetry.ExecuteToolActivityPrefix} {toolCall.ToolName}"
+        );
+        activity?.SetTag("gen_ai.tool.name", toolCall.ToolName);
+        activity?.SetTag("gen_ai.tool.call.id", toolCall.Id);
+        activity?.SetTag("orkis.tool.risk", tool.Descriptor.Risk.ToString());
+
+        var result = await ExecuteAsync(tool, toolCall, decision.RequiredSandboxLevel, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (result.IsError)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, result.Content);
+        }
+
+        RecordToolCall(toolCall.ToolName, result.IsError ? "error" : "executed");
+        return result;
+    }
+
+    private static async Task<SupervisionDecision> ReviewAsync(
+        AgentRunState state,
+        ISupervisor supervisor,
+        ToolCall toolCall,
+        ITool tool,
+        CancellationToken cancellationToken
+    )
+    {
+        using var activity = OrkisInstrumentation.ActivitySource.StartActivity(OrkisTelemetry.SupervisionActivityName);
+        activity?.SetTag("gen_ai.tool.name", toolCall.ToolName);
+        activity?.SetTag("orkis.supervisor.key", state.SupervisorKey);
+        activity?.SetTag("orkis.tool.risk", tool.Descriptor.Risk.ToString());
 
         var action = new ProposedAction
         {
@@ -198,28 +304,15 @@ public sealed class AgentRunner
         };
         var decision = await supervisor.ReviewAsync(action, cancellationToken).ConfigureAwait(false);
 
-        if (decision.Verdict == SupervisionVerdict.Pending)
-        {
-            return null;
-        }
-
-        if (decision.Verdict == SupervisionVerdict.Denied)
-        {
-            return Error(toolCall, $"Tool call denied by supervisor: {decision.Reason ?? "no reason given"}");
-        }
-
-        if (decision.RequiredSandboxLevel is { } level && tool is not ISandboxedTool)
-        {
-            return Error(
-                toolCall,
-                $"Supervisor requires sandbox level {level}, but tool '{toolCall.ToolName}' cannot run sandboxed."
-            );
-        }
-
-        state.ToolCallCount++;
-        return await ExecuteAsync(tool, toolCall, decision.RequiredSandboxLevel, cancellationToken)
-            .ConfigureAwait(false);
+        activity?.SetTag("orkis.supervision.verdict", decision.Verdict.ToString());
+        return decision;
     }
+
+    private static void RecordToolCall(string toolName, string outcome) =>
+        OrkisInstrumentation.ToolCalls.Add(
+            1,
+            new TagList { { "gen_ai.tool.name", toolName }, { "orkis.tool.outcome", outcome } }
+        );
 
     private static async Task<ToolResult> ExecuteAsync(
         ITool tool,
