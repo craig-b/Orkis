@@ -51,4 +51,29 @@ public static class ProcessSandboxServiceCollectionExtensions
         services.TryAddSingleton<ISandbox, BubblewrapSandbox>();
         return services;
     }
+
+    /// <summary>
+    /// Adds <see cref="HostSandbox"/> as an <see cref="ISandbox"/> providing
+    /// <see cref="SandboxLevel.None"/> — direct, unshielded execution on the host.
+    /// Registered additively so it can sit alongside an isolation sandbox; a caller
+    /// resolving <see cref="IEnumerable{T}"/> of <see cref="ISandbox"/> can then choose
+    /// per call. This is not containment — see <see cref="HostSandbox"/>.
+    /// </summary>
+    public static IServiceCollection AddOrkisHostSandbox(
+        this IServiceCollection services,
+        Action<HostSandboxOptions>? configure = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var builder = services.AddOptions<HostSandboxOptions>();
+        if (configure is not null)
+        {
+            builder.Configure(configure);
+        }
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<ISandbox, HostSandbox>();
+        return services;
+    }
 }

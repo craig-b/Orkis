@@ -5,17 +5,23 @@ using Orkis.Tools;
 namespace Orkis.Host;
 
 /// <summary>
-/// Runs a shell command inside the configured sandbox. Declared destructive, so
-/// supervision policies treat it with appropriate suspicion; implements
-/// <see cref="ISandboxedTool"/> so a supervisor can demand a minimum isolation level.
+/// Runs a shell command. Given the supervisor's required minimum isolation, it selects
+/// the weakest available sandbox that satisfies it — so a plain approval (no requirement)
+/// runs at the weakest sandbox registered (host execution when a <see cref="SandboxLevel.None"/>
+/// sandbox is present), while a supervisor requiring isolation forces a stronger one.
+/// Declared destructive, and implements <see cref="ISandboxedTool"/> so the requirement reaches it.
 /// </summary>
-public sealed class ShellTool(ISandbox sandbox) : ISandboxedTool
+public sealed class ShellTool(IEnumerable<ISandbox> sandboxes) : ISandboxedTool
 {
+    private readonly IReadOnlyList<ISandbox> _sandboxes = [.. sandboxes];
+
     public ToolDescriptor Descriptor { get; } =
         new()
         {
             Name = "run_shell_command",
-            Description = "Runs a shell command and returns its output. The command executes in a sandbox.",
+            Description =
+                "Runs a shell command and returns its output. Depending on supervision, the command "
+                + "runs either directly on the host or inside an isolation sandbox.",
             ParametersSchema = JsonDocument
                 .Parse(
                     """
@@ -27,35 +33,32 @@ public sealed class ShellTool(ISandbox sandbox) : ISandboxedTool
         };
 
     public Task<ToolResult> InvokeAsync(ToolCall toolCall, CancellationToken cancellationToken = default) =>
-        InvokeAsync(toolCall, sandbox.Level, cancellationToken);
+        RunAsync(toolCall, SandboxLevel.None, cancellationToken);
 
-    public async Task<ToolResult> InvokeAsync(
+    public Task<ToolResult> InvokeAsync(
         ToolCall toolCall,
         SandboxLevel minimumLevel,
         CancellationToken cancellationToken = default
+    ) => RunAsync(toolCall, minimumLevel, cancellationToken);
+
+    private async Task<ToolResult> RunAsync(
+        ToolCall toolCall,
+        SandboxLevel minimumLevel,
+        CancellationToken cancellationToken
     )
     {
         ArgumentNullException.ThrowIfNull(toolCall);
 
-        if (sandbox.Level < minimumLevel)
+        var sandbox = _sandboxes.Where(s => s.Level >= minimumLevel).OrderBy(s => s.Level).FirstOrDefault();
+        if (sandbox is null)
         {
-            return new ToolResult
-            {
-                ToolCallId = toolCall.Id,
-                Content = $"The configured sandbox provides level {sandbox.Level}, below the required {minimumLevel}.",
-                IsError = true,
-            };
+            return Error(toolCall, $"No registered sandbox provides at least isolation level {minimumLevel}.");
         }
 
         var command = toolCall.Arguments.TryGetProperty("command", out var property) ? property.GetString() : null;
         if (string.IsNullOrWhiteSpace(command))
         {
-            return new ToolResult
-            {
-                ToolCallId = toolCall.Id,
-                Content = "Missing required argument 'command'.",
-                IsError = true,
-            };
+            return Error(toolCall, "Missing required argument 'command'.");
         }
 
         var execution = await sandbox
@@ -70,8 +73,10 @@ public sealed class ShellTool(ISandbox sandbox) : ISandboxedTool
             )
             .ConfigureAwait(false);
 
+        var environment = sandbox.Level == SandboxLevel.None ? "None (host, no isolation)" : sandbox.Level.ToString();
         var output =
-            $"exit code: {execution.ExitCode}{(execution.TimedOut ? " (timed out)" : "")}\n"
+            $"ran in: {environment}\n"
+            + $"exit code: {execution.ExitCode}{(execution.TimedOut ? " (timed out)" : "")}\n"
             + $"stdout:\n{execution.StandardOutput}\n"
             + $"stderr:\n{execution.StandardError}";
 
@@ -82,4 +87,12 @@ public sealed class ShellTool(ISandbox sandbox) : ISandboxedTool
             IsError = execution.ExitCode != 0 || execution.TimedOut,
         };
     }
+
+    private static ToolResult Error(ToolCall toolCall, string message) =>
+        new()
+        {
+            ToolCallId = toolCall.Id,
+            Content = message,
+            IsError = true,
+        };
 }

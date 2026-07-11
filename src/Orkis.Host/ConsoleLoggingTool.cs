@@ -35,7 +35,7 @@ public sealed class ConsoleLoggingTool(ITool inner) : ISandboxedTool
         SandboxLevel? sandboxLevel
     )
     {
-        var sandboxNote = sandboxLevel is { } level ? $" [sandbox: {level}]" : "";
+        var sandboxNote = sandboxLevel is { } level ? $" [supervisor requires ≥ {level}]" : "";
         Console.WriteLine($"→ tool '{toolCall.ToolName}'{sandboxNote} {toolCall.Arguments.GetRawText()}");
 
         var result = await invoke().ConfigureAwait(false);

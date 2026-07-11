@@ -81,6 +81,11 @@ switch (sandbox)
         services.AddOrkisProcessSandbox();
         break;
 }
+
+// Register host execution alongside the isolation sandbox (added after it, so the
+// isolation sandbox's TryAdd still wins as the primary ISandbox). ShellTool resolves
+// the whole collection and picks per supervision decision: [h]ost runs here.
+services.AddOrkisHostSandbox();
 services.AddOrkisSupervisor<ConsoleSupervisor>();
 services.AddOrkisSupervisor<AutoApproveSupervisor>("yolo");
 services.AddOrkisPricing(cost =>
@@ -106,7 +111,7 @@ foreach (var tool in DemoTools.CreateOrkisTools())
     services.AddSingleton<ITool>(new ConsoleLoggingTool(tool));
 }
 
-services.AddSingleton<ITool>(sp => new ConsoleLoggingTool(new ShellTool(sp.GetRequiredService<ISandbox>())));
+services.AddSingleton<ITool>(sp => new ConsoleLoggingTool(new ShellTool(sp.GetServices<ISandbox>())));
 
 IChatClient providerClient = offline
     ? new OfflineChatClient()
@@ -135,7 +140,7 @@ var request = new AgentRunRequest
 Console.WriteLine($"orkis demo | run {request.RunId}");
 Console.WriteLine($"mode: {(offline ? "offline (scripted model)" : $"live ({provider}: {model})")}");
 Console.WriteLine($"supervision: {request.SupervisorKey}");
-Console.WriteLine($"sandbox: {sandbox}");
+Console.WriteLine($"sandbox: {sandbox} isolation + host execution ([h]/[s] at each prompt)");
 Console.WriteLine($"prompt: {prompt}");
 Console.WriteLine();
 
