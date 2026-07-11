@@ -25,6 +25,7 @@ public sealed class AgentRunner
     private readonly ISupervisorResolver _supervisorResolver;
     private readonly ICheckpointStore _checkpointStore;
     private readonly TimeProvider _timeProvider;
+    private readonly ICostCalculator _costCalculator;
     private readonly FrozenDictionary<string, ITool> _tools;
     private readonly ChatOptions? _chatOptions;
 
@@ -33,7 +34,8 @@ public sealed class AgentRunner
         IEnumerable<ITool> tools,
         ISupervisorResolver supervisorResolver,
         ICheckpointStore checkpointStore,
-        TimeProvider timeProvider
+        TimeProvider timeProvider,
+        ICostCalculator? costCalculator = null
     )
     {
         ArgumentNullException.ThrowIfNull(chatClient);
@@ -46,6 +48,7 @@ public sealed class AgentRunner
         _supervisorResolver = supervisorResolver;
         _checkpointStore = checkpointStore;
         _timeProvider = timeProvider;
+        _costCalculator = costCalculator ?? NullCostCalculator.Instance;
         _tools = tools.ToFrozenDictionary(t => t.Descriptor.Name);
         _chatOptions =
             _tools.Count == 0
@@ -113,6 +116,10 @@ public sealed class AgentRunner
             activity?.SetTag("orkis.run.status", result.Status.ToString());
             activity?.SetTag("gen_ai.usage.input_tokens", result.Usage.InputTokens);
             activity?.SetTag("gen_ai.usage.output_tokens", result.Usage.OutputTokens);
+            if (result.Usage.Cost > 0)
+            {
+                activity?.SetTag("orkis.run.cost", (double)result.Usage.Cost);
+            }
             OrkisInstrumentation.SegmentDuration.Record(
                 _timeProvider.GetElapsedTime(segmentStart).TotalSeconds,
                 new TagList { { "orkis.run.status", result.Status.ToString() } }
@@ -198,6 +205,29 @@ public sealed class AgentRunner
                         outputTokens,
                         new TagList { { "orkis.token.direction", "output" } }
                     );
+                }
+
+                var tokenUsage = new TokenUsage
+                {
+                    InputTokens = inputTokens,
+                    OutputTokens = outputTokens,
+                    ModelId = response.ModelId,
+                };
+                if (usage.AdditionalCounts is { Count: > 0 } additionalCounts)
+                {
+                    tokenUsage = tokenUsage with { AdditionalCounts = new Dictionary<string, long>(additionalCounts) };
+                    foreach (var (bucket, count) in additionalCounts)
+                    {
+                        state.AdditionalTokenCounts[bucket] =
+                            state.AdditionalTokenCounts.GetValueOrDefault(bucket) + count;
+                    }
+                }
+
+                var callCost = _costCalculator.Calculate(tokenUsage);
+                if (callCost > 0)
+                {
+                    state.Cost += callCost;
+                    OrkisInstrumentation.Cost.Add((double)callCost);
                 }
             }
 
@@ -349,6 +379,11 @@ public sealed class AgentRunner
             return true;
         }
 
+        if (budget.MaxCost is { } maxCost && state.Cost > maxCost)
+        {
+            return true;
+        }
+
         if (aboutToExecuteTool && budget.MaxToolCalls is { } maxToolCalls && state.ToolCallCount >= maxToolCalls)
         {
             return true;
@@ -378,6 +413,8 @@ public sealed class AgentRunner
             {
                 InputTokens = state.InputTokens,
                 OutputTokens = state.OutputTokens,
+                Cost = state.Cost,
+                AdditionalTokenCounts = new Dictionary<string, long>(state.AdditionalTokenCounts),
                 ToolCalls = state.ToolCallCount,
                 ActiveDuration = state.ActiveDuration,
             },

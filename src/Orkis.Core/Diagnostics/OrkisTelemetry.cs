@@ -28,6 +28,9 @@ public static class OrkisTelemetry
     /// <summary>Counter of tool calls processed, tagged with <c>orkis.tool.outcome</c>.</summary>
     public const string ToolCallsInstrumentName = "orkis.agent.tool_calls";
 
+    /// <summary>Counter of model-call cost, in the currency the cost calculator is configured in.</summary>
+    public const string CostInstrumentName = "orkis.agent.cost";
+
     /// <summary>Histogram of run segment durations in seconds, tagged with <c>orkis.run.status</c>.</summary>
     public const string SegmentDurationInstrumentName = "orkis.agent.run.segment.duration";
 }

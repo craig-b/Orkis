@@ -29,6 +29,12 @@ internal sealed class AgentRunState
 
     public long OutputTokens { get; set; }
 
+    /// <summary>Accumulated cost of the run's model calls, per the host's cost calculator.</summary>
+    public decimal Cost { get; set; }
+
+    /// <summary>Accumulated provider-specific token buckets (cache reads/writes, reasoning, …).</summary>
+    public Dictionary<string, long> AdditionalTokenCounts { get; init; } = new(StringComparer.Ordinal);
+
     public int ToolCallCount { get; set; }
 
     /// <summary>Active running time accumulated across segments, excluding paused time.</summary>

@@ -22,7 +22,24 @@ public static class OrkisServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<ICheckpointStore, InMemoryCheckpointStore>();
         services.TryAddSingleton<ISupervisorResolver, KeyedServiceSupervisorResolver>();
+        services.TryAddSingleton<ICostCalculator>(NullCostCalculator.Instance);
         services.TryAddSingleton<AgentRunner>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers <see cref="PriceTableCostCalculator"/> with the given price table,
+    /// replacing the default zero-cost calculator. This is what makes
+    /// <see cref="Orkis.Runs.RunBudget.MaxCost"/> enforceable.
+    /// </summary>
+    public static IServiceCollection AddOrkisPricing(this IServiceCollection services, Action<CostOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        services.AddOptions<CostOptions>().Configure(configure);
+        services.RemoveAll<ICostCalculator>();
+        services.AddSingleton<ICostCalculator, PriceTableCostCalculator>();
         return services;
     }
 

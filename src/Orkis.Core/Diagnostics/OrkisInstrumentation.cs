@@ -22,6 +22,12 @@ internal static class OrkisInstrumentation
         description: "Tool calls processed by agent runs, by outcome."
     );
 
+    public static readonly Counter<double> Cost = Meter.CreateCounter<double>(
+        OrkisTelemetry.CostInstrumentName,
+        unit: "{currency}",
+        description: "Cost of model calls made by agent runs."
+    );
+
     public static readonly Histogram<double> SegmentDuration = Meter.CreateHistogram<double>(
         OrkisTelemetry.SegmentDurationInstrumentName,
         unit: "s",

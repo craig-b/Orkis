@@ -78,6 +78,12 @@ internal sealed class FakeTool(string name = "fake_tool", ToolRisk risk = ToolRi
     }
 }
 
+/// <summary>A cost calculator that charges a fixed amount per model call.</summary>
+internal sealed class FixedCostCalculator(decimal perCall) : Orkis.Runs.ICostCalculator
+{
+    public decimal Calculate(Orkis.Runs.TokenUsage usage) => perCall;
+}
+
 /// <summary>A resolver that returns one fixed supervisor and records the keys requested.</summary>
 internal sealed class FakeSupervisorResolver(ISupervisor supervisor) : ISupervisorResolver
 {
