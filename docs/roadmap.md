@@ -46,12 +46,8 @@ The through-lines these ideas are meant to respect:
   cloud metadata address, allowing only public egress. Unlocks `curl`/`pip`. `[scaffold]`
   because `NetworkPolicy` exists (None-only). Note: needs privileged host setup
   (`CAP_NET_ADMIN`) and pairs with jailer hardening.
-- **Reranker implementation** `[abstraction]` — `IReranker` exists with no backend;
-  completes the two-stage retrieval story (cross-encoder or API-based).
 - **Additional document parsers (PDF, HTML)** `[idea]` — only plain text/Markdown is
   parsed today; incremental ingestion coverage.
-- **Confabulation guardrail** `[idea]` — a system-prompt/policy discipline against the
-  model presenting remembered content as tool output. Trivial to add, high value.
 
 ## Tier 2 — Medium-term (design mostly clear, larger or dependent)
 

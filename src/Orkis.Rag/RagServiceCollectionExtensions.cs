@@ -34,4 +34,26 @@ public static class RagServiceCollectionExtensions
         services.TryAddSingleton<DocumentIngestor>();
         return services;
     }
+
+    /// <summary>
+    /// Adds <see cref="ChatClientReranker"/> as the <see cref="IReranker"/>, scoring
+    /// retrieval candidates with the registered
+    /// <see cref="Microsoft.Extensions.AI.IChatClient"/> in a single listwise prompt.
+    /// </summary>
+    public static IServiceCollection AddOrkisChatClientReranker(
+        this IServiceCollection services,
+        Action<ChatClientRerankerOptions>? configure = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var options = services.AddOptions<ChatClientRerankerOptions>();
+        if (configure is not null)
+        {
+            options.Configure(configure);
+        }
+
+        services.TryAddSingleton<IReranker, ChatClientReranker>();
+        return services;
+    }
 }
