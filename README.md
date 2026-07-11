@@ -49,7 +49,24 @@ tests/
 
 ## Getting started
 
-Coming soon — the solution is being scaffolded.
+`Orkis.Host` is a working demo of the full stack: an agent with generated tools, a
+sandboxed shell tool, human-in-the-loop supervision at the console, budgets, and
+cost tracking.
+
+```sh
+# Scripted model, no API key needed — proves the whole pipeline locally:
+dotnet run --project src/Orkis.Host -- --offline
+
+# Live against Anthropic (set ORKIS_MODEL to override the default model):
+export ANTHROPIC_API_KEY=sk-ant-...
+dotnet run --project src/Orkis.Host -- "Roll 3 dice and tell me the total."
+
+# Unsupervised ("yolo") mode:
+dotnet run --project src/Orkis.Host -- --yolo --offline
+```
+
+Read-only tools run without ceremony; anything riskier stops at the console for
+approval, where the operator can also require sandboxed execution.
 
 ## License
 
