@@ -27,4 +27,28 @@ public static class ProcessSandboxServiceCollectionExtensions
         services.TryAddSingleton<ISandbox, ProcessSandbox>();
         return services;
     }
+
+    /// <summary>
+    /// Adds <see cref="BubblewrapSandbox"/> as the <see cref="ISandbox"/> implementation,
+    /// providing <see cref="SandboxLevel.Strict"/> isolation via Linux user namespaces.
+    /// Requires the bubblewrap binary; probe availability with
+    /// <see cref="BubblewrapSandbox.IsSupportedAsync"/>.
+    /// </summary>
+    public static IServiceCollection AddOrkisBubblewrapSandbox(
+        this IServiceCollection services,
+        Action<BubblewrapSandboxOptions>? configure = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var builder = services.AddOptions<BubblewrapSandboxOptions>();
+        if (configure is not null)
+        {
+            builder.Configure(configure);
+        }
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<ISandbox, BubblewrapSandbox>();
+        return services;
+    }
 }
