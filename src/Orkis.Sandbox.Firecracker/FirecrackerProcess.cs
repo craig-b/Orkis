@@ -16,6 +16,7 @@ internal static class FirecrackerProcess
         CancellationToken cancellationToken
     )
     {
+        startInfo.RedirectStandardInput = true;
         startInfo.RedirectStandardOutput = true;
         startInfo.RedirectStandardError = true;
         startInfo.UseShellExecute = false;
@@ -23,6 +24,10 @@ internal static class FirecrackerProcess
 
         using var process = new Process { StartInfo = startInfo };
         process.Start();
+
+        // Firecracker attaches the guest serial console to stdin; give it an empty,
+        // closed pipe so it never touches (and corrupts) the host terminal.
+        process.StandardInput.Close();
 
         var stdoutTask = ReadCappedAsync(process.StandardOutput, maxOutputLength, cancellationToken);
         var stderrTask = ReadCappedAsync(process.StandardError, maxOutputLength, cancellationToken);

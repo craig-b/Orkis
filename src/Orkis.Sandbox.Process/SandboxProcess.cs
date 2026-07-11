@@ -14,6 +14,7 @@ internal static class SandboxProcess
         CancellationToken cancellationToken
     )
     {
+        startInfo.RedirectStandardInput = true;
         startInfo.RedirectStandardOutput = true;
         startInfo.RedirectStandardError = true;
         startInfo.UseShellExecute = false;
@@ -21,6 +22,10 @@ internal static class SandboxProcess
 
         using var process = new Process { StartInfo = startInfo };
         process.Start();
+
+        // The sandboxed command gets an empty, closed stdin rather than the host
+        // terminal, so a command that reads stdin fails fast instead of hanging.
+        process.StandardInput.Close();
 
         // Readers use the caller's token, not the timeout token: after a timeout kill the
         // pipes reach end-of-file, and we still want the output captured up to that point.
