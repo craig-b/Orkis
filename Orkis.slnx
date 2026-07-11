@@ -4,6 +4,8 @@
         <Project Path="src/Orkis.Core/Orkis.Core.csproj" />
         <Project Path="src/Orkis.Host/Orkis.Host.csproj" />
         <Project Path="src/Orkis.Rag/Orkis.Rag.csproj" />
+        <Project Path="src/Orkis.Rag.Html/Orkis.Rag.Html.csproj" />
+        <Project Path="src/Orkis.Rag.Pdf/Orkis.Rag.Pdf.csproj" />
         <Project Path="src/Orkis.Runs.FileSystem/Orkis.Runs.FileSystem.csproj" />
         <Project Path="src/Orkis.Sandbox.Firecracker/Orkis.Sandbox.Firecracker.csproj" />
         <Project Path="src/Orkis.Sandbox.Process/Orkis.Sandbox.Process.csproj" />

@@ -16,5 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Orkis.Rag\Orkis.Rag.csproj" />
+    <ProjectReference Include="..\..\src\Orkis.Rag.Html\Orkis.Rag.Html.csproj" />
+    <ProjectReference Include="..\..\src\Orkis.Rag.Pdf\Orkis.Rag.Pdf.csproj" />
   </ItemGroup>
 </Project>
