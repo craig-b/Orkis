@@ -67,7 +67,7 @@ public sealed class PatchedRootfsFixture : IDisposable
 
 // These tests boot real micro-VMs and self-skip (pass vacuously) where KVM, the
 // firecracker binary, or the guest images (scripts/setup-firecracker.sh) are absent.
-public sealed class WarmVmTests(PatchedRootfsFixture fixture) : IClassFixture<PatchedRootfsFixture>, IAsyncDisposable
+public sealed class WarmVmTests(PatchedRootfsFixture fixture) : IClassFixture<PatchedRootfsFixture>, IAsyncLifetime
 {
     internal static readonly string AssetHome =
         Environment.GetEnvironmentVariable("ORKIS_FIRECRACKER_HOME")
@@ -88,7 +88,11 @@ public sealed class WarmVmTests(PatchedRootfsFixture fixture) : IClassFixture<Pa
     private readonly string _workingRoot = Path.Combine(Path.GetTempPath(), $"orkis-warm-tests-{Guid.NewGuid():n}");
     private readonly List<FirecrackerSandbox> _sandboxes = [];
 
-    public async ValueTask DisposeAsync()
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    // IAsyncLifetime, not IAsyncDisposable: xUnit v2 only awaits the former, and warm
+    // VMs outlive the test process (becoming orphaned VMMs) if teardown never runs.
+    public async Task DisposeAsync()
     {
         foreach (var sandbox in _sandboxes)
         {
