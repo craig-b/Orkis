@@ -20,6 +20,7 @@ Orkis provides the building blocks for LLM-driven agents — retrieval-augmented
 - **Observability** — OpenTelemetry tracing of the agent loop with token and cost accounting, following the GenAI semantic conventions
 - **Evals** — recorded/replayable model interactions for deterministic tests and behavioural regression suites
 - **MCP interop** — consume Model Context Protocol servers as tools, and expose Orkis capabilities as an MCP server
+- **Tool search** — large tool catalogs scale via progressive disclosure: a small always-on core plus a searchable catalog the model queries on demand, keeping context lean and prompt caches stable
 - **Source-generated tools** — attribute a C# method and get its schema, argument binding, and validation generated at compile time; reflection-free and AOT-friendly
 
 ## Design principles
