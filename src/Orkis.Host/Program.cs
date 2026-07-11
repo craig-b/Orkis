@@ -5,6 +5,7 @@ using OpenAI;
 using Orkis.Agents;
 using Orkis.Host;
 using Orkis.Runs;
+using Orkis.Sandboxing;
 using Orkis.Supervision;
 using Orkis.Tools;
 
@@ -38,9 +39,48 @@ if (!offline && string.IsNullOrEmpty(selectedKey))
 var model =
     Environment.GetEnvironmentVariable("ORKIS_MODEL") ?? (provider == "openai" ? "gpt-5-mini" : "claude-sonnet-5");
 
+// Sandbox: strongest available wins, overridable with ORKIS_SANDBOX=firecracker|bubblewrap|process.
+var firecrackerHome =
+    Environment.GetEnvironmentVariable("ORKIS_FIRECRACKER_HOME")
+    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "orkis", "firecracker");
+var firecrackerKernel = Path.Combine(firecrackerHome, "vmlinux");
+var firecrackerRootfs = Path.Combine(firecrackerHome, "rootfs.ext4");
+var firecrackerReady =
+    FirecrackerSandbox.IsSupported() && File.Exists(firecrackerKernel) && File.Exists(firecrackerRootfs);
+
+var sandbox =
+    Environment.GetEnvironmentVariable("ORKIS_SANDBOX")?.ToLowerInvariant()
+    ?? (
+        firecrackerReady ? "firecracker"
+        : await BubblewrapSandbox.IsSupportedAsync() ? "bubblewrap"
+        : "process"
+    );
+
+if (sandbox == "firecracker" && !firecrackerReady)
+{
+    Console.Error.WriteLine("Firecracker is not ready (KVM, binary, or guest images missing).");
+    Console.Error.WriteLine("Run scripts/setup-firecracker.sh, or choose another ORKIS_SANDBOX.");
+    return 1;
+}
+
 var services = new ServiceCollection();
 services.AddOrkis();
-services.AddOrkisProcessSandbox();
+switch (sandbox)
+{
+    case "firecracker":
+        services.AddOrkisFirecrackerSandbox(options =>
+        {
+            options.KernelImagePath = firecrackerKernel;
+            options.RootfsImagePath = firecrackerRootfs;
+        });
+        break;
+    case "bubblewrap":
+        services.AddOrkisBubblewrapSandbox();
+        break;
+    default:
+        services.AddOrkisProcessSandbox();
+        break;
+}
 services.AddOrkisSupervisor<ConsoleSupervisor>();
 services.AddOrkisSupervisor<AutoApproveSupervisor>("yolo");
 services.AddOrkisPricing(cost =>
@@ -95,6 +135,7 @@ var request = new AgentRunRequest
 Console.WriteLine($"orkis demo | run {request.RunId}");
 Console.WriteLine($"mode: {(offline ? "offline (scripted model)" : $"live ({provider}: {model})")}");
 Console.WriteLine($"supervision: {request.SupervisorKey}");
+Console.WriteLine($"sandbox: {sandbox}");
 Console.WriteLine($"prompt: {prompt}");
 Console.WriteLine();
 

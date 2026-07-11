@@ -68,6 +68,11 @@ dotnet run --project src/Orkis.Host -- --yolo --offline
 Read-only tools run without ceremony; anything riskier stops at the console for
 approval, where the operator can also require sandboxed execution.
 
+The demo auto-selects the strongest available sandbox — Firecracker micro-VMs
+(requires KVM; run `scripts/setup-firecracker.sh` once to provision the guest
+kernel and rootfs), then bubblewrap, then plain process isolation — overridable
+with `ORKIS_SANDBOX=firecracker|bubblewrap|process`.
+
 ## License
 
 TBD
