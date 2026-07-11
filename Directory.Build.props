@@ -1,5 +1,4 @@
 <Project>
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
@@ -14,5 +13,4 @@
     <Authors>Orkis contributors</Authors>
     <RepositoryUrl>https://github.com/orkis/orkis</RepositoryUrl>
   </PropertyGroup>
-
 </Project>

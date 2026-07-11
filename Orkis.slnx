@@ -1,0 +1,10 @@
+<Solution>
+    <Folder Name="/src/">
+        <Project Path="src/Orkis.Abstractions/Orkis.Abstractions.csproj" />
+        <Project Path="src/Orkis.Core/Orkis.Core.csproj" />
+        <Project Path="src/Orkis.Host/Orkis.Host.csproj" />
+    </Folder>
+    <Folder Name="/tests/">
+        <Project Path="tests/Orkis.Core.Tests/Orkis.Core.Tests.csproj" />
+    </Folder>
+</Solution>
