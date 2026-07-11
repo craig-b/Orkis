@@ -8,6 +8,11 @@ Orkis provides the building blocks for LLM-driven agents — retrieval-augmented
 
 ## Features
 
+This is the feature set Orkis aims for — a statement of intent, not a promise of
+current or complete capabilities. What is actually built today versus planned is
+tracked in [docs/roadmap.md](docs/roadmap.md), so this list can stay stable as a
+description of direction rather than a status checklist.
+
 - **Agentic tool calling** — an orchestration loop that lets models plan, call tools, and act on results
 - **RAG** — retrieval-augmented generation over your own data, with pluggable vector store backends and a first-class ingestion pipeline (parsing, chunking, embedding)
 - **Reranking** — second-stage relevance scoring to sharpen retrieval results before they reach the model
@@ -36,12 +41,15 @@ Orkis provides the building blocks for LLM-driven agents — retrieval-augmented
 src/
   Orkis.Abstractions      Interfaces and shared domain types (minimal dependencies)
   Orkis.Core              Agent loop, orchestration, tool dispatch
-  Orkis.Rag.*             Vector store / retrieval implementations
-  Orkis.Rerank.*          Reranker implementations
-  Orkis.Sandbox.*         Sandbox execution implementations
-  Orkis.Host              Composition root and application entry point
+  Orkis.Tools.Generator   Source generator for [OrkisTool] methods
+  Orkis.Rag.*             Ingestion, vector store, and retrieval implementations
+  Orkis.Sandbox.*         Sandbox execution implementations (process, bubblewrap, Firecracker)
+  Orkis.Host              Composition root and demo entry point
 tests/
 ```
+
+Package families written with `.*` (e.g. `Orkis.Rag.*`) hold zero or more concrete
+packages today; see the roadmap for which backends exist versus are planned.
 
 ## Requirements
 
@@ -57,9 +65,11 @@ cost tracking.
 # Scripted model, no API key needed — proves the whole pipeline locally:
 dotnet run --project src/Orkis.Host -- --offline
 
-# Live against Anthropic (set ORKIS_MODEL to override the default model):
-export ANTHROPIC_API_KEY=sk-ant-...
+# Live against a model provider — set a key and Orkis picks the provider:
+export ANTHROPIC_API_KEY=sk-ant-...     # or OPENAI_API_KEY=sk-...
 dotnet run --project src/Orkis.Host -- "Roll 3 dice and tell me the total."
+
+# ORKIS_PROVIDER=anthropic|openai and ORKIS_MODEL=<id> override the defaults.
 
 # Unsupervised ("yolo") mode:
 dotnet run --project src/Orkis.Host -- --yolo --offline
