@@ -264,7 +264,9 @@ else
     {
         Prompt = prompt,
         SystemPrompt =
-            "You are the Orkis demo agent. Use the available tools to fulfil the request, then summarize what happened.",
+            "You are the Orkis demo agent. Use the available tools to fulfil the request, then summarize what happened."
+            + "\n\n"
+            + SystemPromptFragments.ConfabulationGuardrail,
         SupervisorKey = yolo ? "yolo"
             : queueMode ? "queue"
             : SupervisorKeys.Default,
