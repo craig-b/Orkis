@@ -87,8 +87,12 @@ with `ORKIS_SANDBOX=firecracker|bubblewrap|process`.
 
 Shell commands run in a persistent workspace scoped per sandbox type
 (`ORKIS_WORKSPACE` names it; `default` otherwise), so files written by one command
-— or one run — are still there for the next, even across a Firecracker VM's
-boot-per-command lifecycle.
+— or one run — are still there for the next. On Firecracker, a rootfs carrying the
+Orkis guest agent gets a warm micro-VM per workspace: successive commands reuse one
+VM over vsock instead of paying a boot each, until an idle timeout reclaims it
+(disk state survives; only memory is lost). Re-run `scripts/setup-firecracker.sh`
+once to add the agent to an existing rootfs; without it, execution transparently
+falls back to boot-per-command.
 
 Files leave a workspace only through the artifact store: the agent's
 `promote_artifact` tool lifts a file out (a supervised trust decision), and

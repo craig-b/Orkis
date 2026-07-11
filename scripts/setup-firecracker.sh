@@ -65,33 +65,10 @@ bwrap \
   --uid 0 --gid 0 \
   /sbin/apk add --no-cache $PACKAGES
 
-# --- Orkis /init contract (busybox from Alpine provides mount/cat/reboot) ---
-cat > "$ROOT/init" << 'EOF'
-#!/bin/sh
-export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-mount -t proc proc /proc
-mount -t sysfs sys /sys
-mount -t tmpfs tmpfs /tmp
-mount -t devtmpfs dev /dev 2> /dev/null
-mount /dev/vdb /work
-cd /work
-/bin/sh /work/.orkis/command.sh > /tmp/orkis-out 2> /tmp/orkis-err
-code=$?
-echo "===ORKIS:STDOUT==="
-cat /tmp/orkis-out
-echo "===ORKIS:STDERR==="
-cat /tmp/orkis-err
-echo "===ORKIS:EXIT:$code==="
-# Unmount /work cleanly so a persistent workspace image's journal is left clean;
-# the host falls back to e2fsck replay if this is ever skipped (crash, timeout).
-cd /
-sync
-umount /work 2> /dev/null
-# reboot -f (not poweroff): Firecracker has no ACPI; the reboot syscall with
-# reboot=k boot args produces the KVM shutdown exit that terminates the VMM.
-reboot -f
-EOF
-chmod +x "$ROOT/init"
+# --- Orkis /init contract + guest agent (see scripts/guest/) ---
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+install -m 0755 "$SCRIPT_DIR/guest/init.sh" "$ROOT/init"
+install -m 0644 "$SCRIPT_DIR/guest/orkis-agent.py" -D "$ROOT/opt/orkis-agent.py"
 mkdir -p "$ROOT/work"
 
 # --- Pack into an ext4 image ---

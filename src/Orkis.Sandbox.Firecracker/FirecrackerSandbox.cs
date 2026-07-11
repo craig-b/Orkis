@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
@@ -9,10 +10,12 @@ namespace Orkis.Sandboxing;
 /// <summary>
 /// Executes each command in its own Firecracker micro-VM: a hardware-virtualized
 /// boundary (KVM) with a read-only root filesystem, a private writable /work drive,
-/// and no network device. The VM boots, runs the command, and is destroyed. With a
-/// <see cref="SandboxExecutionRequest.WorkspaceKey"/>, /work is a persistent per-key
-/// image reused across executions, so files survive between commands; without one it
-/// is a throwaway scratch.
+/// and no network device. Without a <see cref="SandboxExecutionRequest.WorkspaceKey"/>
+/// each command gets a throwaway VM and scratch. With one, /work is a persistent
+/// per-key image — and when the rootfs carries the Orkis guest agent, one warm VM per
+/// workspace serves successive commands over vsock: boot cost is paid once, in-memory
+/// state persists between commands, and concurrent commands are ordinary in-OS
+/// concurrency. Warm VMs shut down after an idle timeout; only memory state is lost.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -29,7 +32,7 @@ namespace Orkis.Sandboxing;
 /// under its jailer; this implementation launches it directly.
 /// </para>
 /// </remarks>
-public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess
+public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncDisposable
 {
     private const string StdoutMarker = "===ORKIS:STDOUT===";
     private const string StderrMarker = "===ORKIS:STDERR===";
@@ -41,8 +44,10 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess
     // is not survivable and is ours.
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> WorkspaceGates = new();
 
+    private readonly ConcurrentDictionary<string, FirecrackerWarmVm> _warmVms = new();
     private readonly FirecrackerSandboxOptions _options;
     private readonly TimeProvider _timeProvider;
+    private volatile bool _agentUnavailable;
 
     public FirecrackerSandbox(IOptions<FirecrackerSandboxOptions> options, TimeProvider? timeProvider = null)
     {
@@ -85,39 +90,19 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess
 
         try
         {
-            WriteCommandScript(request, stagingDirectory);
-
             if (request.WorkspaceKey is { } key)
             {
-                var workspaceImage = GetWorkspaceImagePath(key);
-                Directory.CreateDirectory(Path.GetDirectoryName(workspaceImage)!);
-
-                var gate = WorkspaceGates.GetOrAdd(workspaceImage, static _ => new SemaphoreSlim(1, 1));
-                await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-                try
-                {
-                    if (File.Exists(workspaceImage))
-                    {
-                        await ReplayJournalAsync(workspaceImage, cancellationToken).ConfigureAwait(false);
-                        var scriptPath = Path.Combine(stagingDirectory, ".orkis", "command.sh");
-                        await InjectCommandScriptAsync(workspaceImage, scriptPath, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        await BuildScratchImageAsync(stagingDirectory, workspaceImage, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-
-                    return await BootAndRunAsync(request, executionDirectory, workspaceImage, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                finally
-                {
-                    gate.Release();
-                }
+                return await ExecutePersistentAsync(
+                        request,
+                        key,
+                        executionDirectory,
+                        stagingDirectory,
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
             }
 
+            WriteCommandScript(request, stagingDirectory);
             var scratchImage = Path.Combine(executionDirectory, "scratch.ext4");
             await BuildScratchImageAsync(stagingDirectory, scratchImage, cancellationToken).ConfigureAwait(false);
             return await BootAndRunAsync(request, executionDirectory, scratchImage, cancellationToken)
@@ -127,6 +112,274 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess
         {
             TryDeleteDirectory(executionDirectory);
         }
+    }
+
+    private async Task<SandboxExecutionResult> ExecutePersistentAsync(
+        SandboxExecutionRequest request,
+        string key,
+        string executionDirectory,
+        string stagingDirectory,
+        CancellationToken cancellationToken
+    )
+    {
+        var workspaceImage = GetWorkspaceImagePath(key);
+        Directory.CreateDirectory(Path.GetDirectoryName(workspaceImage)!);
+        var gate = WorkspaceGates.GetOrAdd(workspaceImage, static _ => new SemaphoreSlim(1, 1));
+
+        FirecrackerWarmVm? warmVm = null;
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_options.EnableWarmVms && !_agentUnavailable)
+            {
+                warmVm = await GetOrBootWarmVmAsync(workspaceImage, stagingDirectory, cancellationToken)
+                    .ConfigureAwait(false);
+                warmVm?.BeginCommand();
+            }
+
+            if (warmVm is null)
+            {
+                return await ExecuteColdLockedAsync(
+                        request,
+                        workspaceImage,
+                        executionDirectory,
+                        stagingDirectory,
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        try
+        {
+            return await ExecuteViaAgentAsync(warmVm, request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SocketException)
+        {
+            // Connecting to the agent failed, so the command never started: discard the
+            // VM and run this command the cold way instead.
+            await RemoveWarmVmAsync(workspaceImage, warmVm).ConfigureAwait(false);
+
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                return await ExecuteColdLockedAsync(
+                        request,
+                        workspaceImage,
+                        executionDirectory,
+                        stagingDirectory,
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+        catch (Exception ex)
+            when (ex is IOException or JsonException or FormatException
+                || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            )
+        {
+            // The VM broke mid-command. Whether the command's side effects happened is
+            // unknowable, so do not silently re-execute — surface the loss instead.
+            await RemoveWarmVmAsync(workspaceImage, warmVm).ConfigureAwait(false);
+            return new SandboxExecutionResult
+            {
+                ExitCode = -1,
+                StandardOutput = "",
+                StandardError =
+                    "The warm micro-VM stopped responding mid-command and was discarded. Workspace "
+                    + "files are preserved; retry if the command is safe to run again.",
+                TimedOut = ex is OperationCanceledException,
+            };
+        }
+        finally
+        {
+            warmVm.EndCommand();
+        }
+    }
+
+    private async Task<SandboxExecutionResult> ExecuteColdLockedAsync(
+        SandboxExecutionRequest request,
+        string workspaceImage,
+        string executionDirectory,
+        string stagingDirectory,
+        CancellationToken cancellationToken
+    )
+    {
+        WriteCommandScript(request, stagingDirectory);
+        if (File.Exists(workspaceImage))
+        {
+            await ReplayJournalAsync(workspaceImage, cancellationToken).ConfigureAwait(false);
+            var scriptPath = Path.Combine(stagingDirectory, ".orkis", "command.sh");
+            await InjectCommandScriptAsync(workspaceImage, scriptPath, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await BuildScratchImageAsync(stagingDirectory, workspaceImage, cancellationToken).ConfigureAwait(false);
+        }
+
+        return await BootAndRunAsync(request, executionDirectory, workspaceImage, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Returns the workspace's warm VM, booting one if needed. Must be called holding
+    /// the workspace gate. Returns <see langword="null"/> (and stops trying for this
+    /// sandbox) when the rootfs has no guest agent.
+    /// </summary>
+    private async Task<FirecrackerWarmVm?> GetOrBootWarmVmAsync(
+        string workspaceImage,
+        string stagingDirectory,
+        CancellationToken cancellationToken
+    )
+    {
+        if (_warmVms.TryGetValue(workspaceImage, out var existing))
+        {
+            return existing;
+        }
+
+        if (File.Exists(workspaceImage))
+        {
+            await ReplayJournalAsync(workspaceImage, cancellationToken).ConfigureAwait(false);
+
+            // A stale command script from an earlier cold run must not re-execute if
+            // this boot falls back to the legacy init flow (rootfs without an agent).
+            await RunDebugfsAsync(workspaceImage, "rm /.orkis/command.sh", cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            // The staging directory has no command script at this point, so this
+            // builds an empty workspace.
+            await BuildScratchImageAsync(stagingDirectory, workspaceImage, cancellationToken).ConfigureAwait(false);
+        }
+
+        var vmDirectory = Path.Combine(_options.WorkingRoot, "vms", Guid.CreateVersion7().ToString("n"));
+        var vmConfig = BuildVmConfig(workspaceImage, Path.Combine(vmDirectory, "vsock.sock"));
+        var vm = await FirecrackerWarmVm
+            .TryBootAsync(_options, vmConfig, vmDirectory, HandleVmIdle, _timeProvider, cancellationToken)
+            .ConfigureAwait(false);
+        if (vm is null)
+        {
+            _agentUnavailable = true;
+            return null;
+        }
+
+        _warmVms[workspaceImage] = vm;
+        return vm;
+    }
+
+    private async Task<SandboxExecutionResult> ExecuteViaAgentAsync(
+        FirecrackerWarmVm vm,
+        SandboxExecutionRequest request,
+        CancellationToken cancellationToken
+    )
+    {
+        var timeout = request.Timeout ?? _options.DefaultTimeout;
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["command"] = BuildCommandLine(request),
+            ["timeoutSeconds"] = Math.Max(1, (int)timeout.TotalSeconds),
+        };
+        if (ValidateWorkingDirectory(request) is { } workingDirectory)
+        {
+            payload["cwd"] = workingDirectory;
+        }
+
+        var environment = new Dictionary<string, string>();
+        foreach (var name in _options.EnvironmentAllowlist)
+        {
+            if (Environment.GetEnvironmentVariable(name) is { } value)
+            {
+                environment[name] = value;
+            }
+        }
+
+        if (environment.Count > 0)
+        {
+            payload["env"] = environment;
+        }
+
+        using var response = await vm.SendRequestAsync(
+                JsonSerializer.Serialize(payload),
+                timeout + TimeSpan.FromSeconds(15),
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+
+        var root = response.RootElement;
+        return new SandboxExecutionResult
+        {
+            ExitCode = root.GetProperty("exit").GetInt32(),
+            StandardOutput = Cap(DecodeBase64(root, "stdout")),
+            StandardError = Cap(DecodeBase64(root, "stderr")),
+            TimedOut = root.TryGetProperty("timedOut", out var timedOut) && timedOut.GetBoolean(),
+        };
+    }
+
+    private void HandleVmIdle(FirecrackerWarmVm vm) =>
+        _ = Task.Run(async () =>
+        {
+            var entry = _warmVms.FirstOrDefault(pair => ReferenceEquals(pair.Value, vm));
+            if (entry.Key is null)
+            {
+                return;
+            }
+
+            var gate = WorkspaceGates.GetOrAdd(entry.Key, static _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (vm.InFlight == 0 && _warmVms.TryRemove(KeyValuePair.Create(entry.Key, vm)))
+                {
+                    await vm.DisposeAsync().ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+
+    private async Task RemoveWarmVmAsync(string workspaceImage, FirecrackerWarmVm vm)
+    {
+        _warmVms.TryRemove(KeyValuePair.Create(workspaceImage, vm));
+        await vm.DisposeAsync().ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var key in _warmVms.Keys.ToList())
+        {
+            if (_warmVms.TryRemove(key, out var vm))
+            {
+                await vm.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static string DecodeBase64(JsonElement root, string property) =>
+        root.TryGetProperty(property, out var value) && value.GetString() is { Length: > 0 } encoded
+            ? Encoding.UTF8.GetString(Convert.FromBase64String(encoded))
+            : "";
+
+    private static string BuildCommandLine(SandboxExecutionRequest request)
+    {
+        var builder = new StringBuilder(ShellQuote(request.Executable));
+        foreach (var argument in request.Arguments)
+        {
+            builder.Append(' ').Append(ShellQuote(argument));
+        }
+
+        return builder.ToString();
     }
 
     private async Task<SandboxExecutionResult> BootAndRunAsync(
@@ -218,6 +471,13 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            // debugfs must never touch an image a live VM has attached: shut a warm VM
+            // down first (its clean unmount also leaves the journal clean).
+            if (_warmVms.TryRemove(imagePath, out var warmVm))
+            {
+                await warmVm.DisposeAsync().ConfigureAwait(false);
+            }
+
             await ReplayJournalAsync(imagePath, cancellationToken).ConfigureAwait(false);
             var tempPath = Path.Combine(Path.GetTempPath(), "orkis-dump-" + Guid.CreateVersion7().ToString("n"));
             try
@@ -265,6 +525,13 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            // debugfs must never touch an image a live VM has attached: shut a warm VM
+            // down first (its clean unmount also leaves the journal clean).
+            if (_warmVms.TryRemove(imagePath, out var warmVm))
+            {
+                await warmVm.DisposeAsync().ConfigureAwait(false);
+            }
+
             if (!File.Exists(imagePath))
             {
                 var emptyStaging = Path.Combine(
@@ -384,16 +651,8 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess
             }
         }
 
-        if (request.WorkingDirectory is { } requested)
+        if (ValidateWorkingDirectory(request) is { } requested)
         {
-            if (Path.IsPathRooted(requested) || requested.Split('/', '\\').Contains(".."))
-            {
-                throw new ArgumentException(
-                    "The working directory must be a relative path inside the sandbox.",
-                    nameof(request)
-                );
-            }
-
             Directory.CreateDirectory(Path.Combine(stagingDirectory, requested));
             script.Append("mkdir -p ").AppendLine(ShellQuote(requested));
             script.Append("cd ").AppendLine(ShellQuote(requested));
@@ -410,6 +669,24 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess
         var orkisDirectory = Path.Combine(stagingDirectory, ".orkis");
         Directory.CreateDirectory(orkisDirectory);
         File.WriteAllText(Path.Combine(orkisDirectory, "command.sh"), script.ToString());
+    }
+
+    private static string? ValidateWorkingDirectory(SandboxExecutionRequest request)
+    {
+        if (request.WorkingDirectory is not { } requested)
+        {
+            return null;
+        }
+
+        if (Path.IsPathRooted(requested) || requested.Split('/', '\\').Contains(".."))
+        {
+            throw new ArgumentException(
+                "The working directory must be a relative path inside the sandbox.",
+                nameof(request)
+            );
+        }
+
+        return requested;
     }
 
     private async Task BuildScratchImageAsync(
@@ -438,14 +715,20 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess
         }
     }
 
-    private string BuildVmConfig(string scratchImagePath)
+    private string BuildVmConfig(string scratchImagePath, string? vsockUdsPath = null)
     {
+        var bootArgs = "console=ttyS0 reboot=k panic=1 pci=off quiet loglevel=0 init=/init";
+        if (vsockUdsPath is not null)
+        {
+            bootArgs += " orkis.mode=agent";
+        }
+
         var config = new Dictionary<string, object>
         {
             ["boot-source"] = new Dictionary<string, object>
             {
                 ["kernel_image_path"] = Path.GetFullPath(_options.KernelImagePath),
-                ["boot_args"] = "console=ttyS0 reboot=k panic=1 pci=off quiet loglevel=0 init=/init",
+                ["boot_args"] = bootArgs,
             },
             ["drives"] = new[]
             {
@@ -472,6 +755,15 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess
                 ["smt"] = false,
             },
         };
+        if (vsockUdsPath is not null)
+        {
+            config["vsock"] = new Dictionary<string, object>
+            {
+                ["guest_cid"] = 3,
+                ["uds_path"] = Path.GetFullPath(vsockUdsPath),
+            };
+        }
+
         return JsonSerializer.Serialize(config);
     }
 

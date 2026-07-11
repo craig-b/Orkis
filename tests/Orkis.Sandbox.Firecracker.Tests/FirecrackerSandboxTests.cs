@@ -54,7 +54,7 @@ public sealed class FirecrackerSandboxTests
         var workingRoot = Path.Combine(Path.GetTempPath(), $"orkis-fc-ws-{Guid.NewGuid():n}");
         try
         {
-            var sandbox = new FirecrackerSandbox(
+            await using var sandbox = new FirecrackerSandbox(
                 Options.Create(
                     new FirecrackerSandboxOptions
                     {
@@ -102,7 +102,7 @@ public sealed class FirecrackerSandboxTests
         var workingRoot = Path.Combine(Path.GetTempPath(), $"orkis-fc-wfa-{Guid.NewGuid():n}");
         try
         {
-            var sandbox = new FirecrackerSandbox(
+            await using var sandbox = new FirecrackerSandbox(
                 Options.Create(
                     new FirecrackerSandboxOptions
                     {

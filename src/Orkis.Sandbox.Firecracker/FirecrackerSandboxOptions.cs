@@ -58,6 +58,22 @@ public sealed class FirecrackerSandboxOptions
     /// <summary>Timeout applied when a request does not specify one.</summary>
     public TimeSpan DefaultTimeout { get; set; } = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// Reuse one warm micro-VM per workspace for successive commands (requires a rootfs
+    /// with the guest agent; falls back to boot-per-command automatically when the
+    /// agent never comes up). Applies only to executions with a workspace key.
+    /// </summary>
+    public bool EnableWarmVms { get; set; } = true;
+
+    /// <summary>How long a warm VM may sit idle before it is shut down.</summary>
+    public TimeSpan WarmVmIdleTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// How long to wait after boot for the guest agent to accept a vsock connection
+    /// before concluding the rootfs has no agent and falling back to cold execution.
+    /// </summary>
+    public TimeSpan AgentReadyTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
     /// <summary>Maximum characters captured per output stream.</summary>
     public int MaxOutputLength { get; set; } = 64 * 1024;
 

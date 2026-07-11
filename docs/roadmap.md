@@ -40,13 +40,6 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 1 — Near-term (well-specified, clear next steps)
 
-- **Firecracker guest agent + VM reuse** `[idea]` — a small agent inside the guest
-  (vsock exec protocol: run command, stream stdout/stderr/exit) so one VM per
-  (workspace, sandbox type) serves many commands: boot latency amortised, in-memory
-  state (installed packages, warm caches) persists between commands, and concurrent
-  commands become ordinary in-OS concurrency with error messages models already
-  understand. Idle timeout destroys the VM; the workspace image survives, so loss is
-  memory-only. Replaces today's boot-per-command model when present.
 - **Firecracker networking — Phase 1: restricted egress** `[scaffold]` — TAP + NAT with
   a hardened nftables ruleset that blocks the host, RFC1918 ranges, link-local, and the
   cloud metadata address, allowing only public egress. Unlocks `curl`/`pip`. `[scaffold]`
@@ -99,9 +92,9 @@ The through-lines these ideas are meant to respect:
   own supervision facet. The orchestrator-mediated staging design already gives it a
   choke point.
 - **Long-running sessions (dev servers, REPLs)** `[idea]` — what remains beyond the
-  Tier 1 guest agent: exposing session lifecycle to the *model* (background processes,
-  port forwarding, attach/detach). Much softened now that disk state survives VM death —
-  the disappearance problem is memory-only.
+  warm-VM guest agent (built): exposing session lifecycle to the *model* (background
+  processes, port forwarding, attach/detach). Much softened now that disk state
+  survives VM death — the disappearance problem is memory-only.
 - **Firecracker networking — Phase 2: domain allowlist** `[idea]` — an SNI-filtering egress
   proxy (no TLS interception) plus DNS control, for per-run domain scoping.
 - **Sandbox capability advertising** `[idea]` — a `SandboxCapabilities` surface (network
