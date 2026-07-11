@@ -29,8 +29,8 @@ public sealed class FirecrackerSandboxOptions
     /// <summary>Virtual CPUs per micro-VM.</summary>
     public int VcpuCount { get; set; } = 1;
 
-    /// <summary>Guest memory per micro-VM, in MiB.</summary>
-    public int MemorySizeMib { get; set; } = 128;
+    /// <summary>Guest memory per micro-VM, in MiB. The Alpine + Python guest wants headroom.</summary>
+    public int MemorySizeMib { get; set; } = 256;
 
     /// <summary>Size of the writable /work scratch image, in MiB.</summary>
     public int ScratchSizeMib { get; set; } = 64;

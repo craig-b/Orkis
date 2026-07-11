@@ -1,19 +1,27 @@
 #!/usr/bin/env bash
 # Provisions the guest assets FirecrackerSandbox needs:
 #   $DEST/vmlinux      - uncompressed guest kernel (from the Firecracker CI bucket)
-#   $DEST/rootfs.ext4  - minimal busybox rootfs implementing the Orkis /init contract
+#   $DEST/rootfs.ext4  - Alpine-based rootfs (python3, curl, CA certs, busybox)
+#                        implementing the Orkis /init contract
 #
-# Requires: curl, mkfs.ext4 (e2fsprogs), and either a static busybox on the host
-# or network access to download one. Does not require root.
+# Requires: curl, mkfs.ext4 (e2fsprogs), and bwrap (bubblewrap) to run Alpine's apk
+# into the staged rootfs without root. Needs network access to download the kernel,
+# the Alpine minirootfs, and packages. Does not require root.
 set -euo pipefail
 
 DEST="${ORKIS_FIRECRACKER_HOME:-$HOME/.local/share/orkis/firecracker}"
 ARCH="$(uname -m)"
+ALPINE_BRANCH="${ORKIS_ALPINE_BRANCH:-v3.21}"
+ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine"
 KERNEL_URL="https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.13/${ARCH}/vmlinux-6.1.141"
-BUSYBOX_URL="https://busybox.net/downloads/binaries/1.35.0-${ARCH}-linux-musl/busybox"
+PACKAGES="${ORKIS_ALPINE_PACKAGES:-python3 curl ca-certificates-bundle}"
 
 if [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "aarch64" ]; then
   echo "Unsupported architecture: $ARCH" >&2
+  exit 1
+fi
+if ! command -v bwrap > /dev/null; then
+  echo "bwrap (bubblewrap) is required to build the Alpine rootfs without root." >&2
   exit 1
 fi
 
@@ -27,59 +35,66 @@ else
   echo "Guest kernel already present."
 fi
 
-# --- Busybox: prefer a static host binary, download otherwise ---
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
-
-BUSYBOX="$STAGING/busybox"
-if command -v busybox > /dev/null && file "$(command -v busybox)" | grep -q 'statically linked'; then
-  echo "Using host busybox ($(command -v busybox))."
-  cp "$(command -v busybox)" "$BUSYBOX"
-else
-  echo "Downloading static busybox..."
-  curl -fL --progress-bar -o "$BUSYBOX" "$BUSYBOX_URL"
-fi
-chmod +x "$BUSYBOX"
-
-# --- Rootfs implementing the Orkis /init contract ---
-echo "Building rootfs..."
 ROOT="$STAGING/root"
-mkdir -p "$ROOT"/{bin,sbin,dev,proc,sys,tmp,work,etc}
-cp "$BUSYBOX" "$ROOT/bin/busybox"
-# Symlink every applet this busybox build provides — a full BusyBox userland
-# (grep, sed, awk, find, tar, gzip, wget, xargs, diff, vi, ...) for near-zero size.
-# Skip "busybox" itself: --list includes it, and a busybox->busybox symlink would
-# replace the real binary with a self-referential loop (init fails with ELOOP).
-for applet in $("$BUSYBOX" --list); do
-  [ "$applet" = "busybox" ] && continue
-  ln -sf busybox "$ROOT/bin/$applet"
-done
+mkdir -p "$ROOT"
 
+# --- Alpine base ---
+echo "Fetching Alpine minirootfs ($ALPINE_BRANCH, $ARCH)..."
+RELEASES_URL="$ALPINE_MIRROR/$ALPINE_BRANCH/releases/$ARCH"
+MINIROOTFS="$(curl -fsSL "$RELEASES_URL/latest-releases.yaml" | grep -oE 'alpine-minirootfs-[0-9.]+-'"$ARCH"'\.tar\.gz' | head -1)"
+if [ -z "$MINIROOTFS" ]; then
+  echo "Could not determine the latest Alpine minirootfs filename." >&2
+  exit 1
+fi
+curl -fL --progress-bar -o "$STAGING/minirootfs.tar.gz" "$RELEASES_URL/$MINIROOTFS"
+tar -xzf "$STAGING/minirootfs.tar.gz" -C "$ROOT"
+
+# --- Install packages via apk, run inside the rootfs with bwrap (no root needed) ---
+echo "Installing packages: $PACKAGES"
+printf '%s/%s/main\n%s/%s/community\n' "$ALPINE_MIRROR" "$ALPINE_BRANCH" "$ALPINE_MIRROR" "$ALPINE_BRANCH" \
+  > "$ROOT/etc/apk/repositories"
+cp /etc/resolv.conf "$ROOT/etc/resolv.conf"
+
+# shellcheck disable=SC2086
+bwrap \
+  --bind "$ROOT" / \
+  --proc /proc --dev /dev --tmpfs /tmp \
+  --unshare-user --unshare-pid \
+  --uid 0 --gid 0 \
+  /sbin/apk add --no-cache $PACKAGES
+
+# --- Orkis /init contract (busybox from Alpine provides mount/cat/reboot) ---
 cat > "$ROOT/init" << 'EOF'
 #!/bin/sh
-export PATH=/bin:/sbin
-/bin/busybox mount -t proc proc /proc
-/bin/busybox mount -t sysfs sys /sys
-/bin/busybox mount -t tmpfs tmpfs /tmp
-/bin/busybox mount -t devtmpfs dev /dev 2> /dev/null
-/bin/busybox mount /dev/vdb /work
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t tmpfs tmpfs /tmp
+mount -t devtmpfs dev /dev 2> /dev/null
+mount /dev/vdb /work
 cd /work
 /bin/sh /work/.orkis/command.sh > /tmp/orkis-out 2> /tmp/orkis-err
 code=$?
 echo "===ORKIS:STDOUT==="
-/bin/busybox cat /tmp/orkis-out
+cat /tmp/orkis-out
 echo "===ORKIS:STDERR==="
-/bin/busybox cat /tmp/orkis-err
+cat /tmp/orkis-err
 echo "===ORKIS:EXIT:$code==="
 # reboot -f (not poweroff): Firecracker has no ACPI; the reboot syscall with
 # reboot=k boot args produces the KVM shutdown exit that terminates the VMM.
-/bin/busybox reboot -f
+reboot -f
 EOF
 chmod +x "$ROOT/init"
+mkdir -p "$ROOT/work"
 
+# --- Pack into an ext4 image ---
+echo "Building rootfs image..."
 rm -f "$DEST/rootfs.ext4"
-truncate -s 16M "$DEST/rootfs.ext4"
+truncate -s 512M "$DEST/rootfs.ext4"
 mkfs.ext4 -q -F -d "$ROOT" "$DEST/rootfs.ext4"
+resize2fs -M "$DEST/rootfs.ext4" > /dev/null 2>&1 || true
 
 echo
 echo "Done. Assets in $DEST:"
