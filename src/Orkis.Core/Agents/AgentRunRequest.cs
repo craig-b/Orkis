@@ -1,4 +1,5 @@
 using Orkis.Runs;
+using Orkis.Supervision;
 
 namespace Orkis.Agents;
 
@@ -16,4 +17,10 @@ public sealed record AgentRunRequest
 
     /// <summary>Resource limits for the run.</summary>
     public RunBudget Budget { get; init; } = RunBudget.Unlimited;
+
+    /// <summary>
+    /// Key of the supervisor governing this run. Checkpointed with the run's state, so a
+    /// resumed run reconnects to the same supervision policy.
+    /// </summary>
+    public string SupervisorKey { get; init; } = SupervisorKeys.Default;
 }

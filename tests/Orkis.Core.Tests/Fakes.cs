@@ -59,6 +59,18 @@ internal sealed class FakeTool(string name = "fake_tool", ToolRisk risk = ToolRi
     }
 }
 
+/// <summary>A resolver that returns one fixed supervisor and records the keys requested.</summary>
+internal sealed class FakeSupervisorResolver(ISupervisor supervisor) : ISupervisorResolver
+{
+    public List<string> RequestedKeys { get; } = [];
+
+    public ISupervisor Resolve(string key)
+    {
+        RequestedKeys.Add(key);
+        return supervisor;
+    }
+}
+
 /// <summary>A supervisor that replays scripted decisions, approving once the script runs out.</summary>
 internal sealed class ScriptedSupervisor : ISupervisor
 {

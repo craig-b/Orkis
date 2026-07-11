@@ -16,6 +16,9 @@ internal sealed class AgentRunState
 
     public RunBudget Budget { get; init; } = RunBudget.Unlimited;
 
+    /// <summary>Key of the supervisor governing this run.</summary>
+    public string SupervisorKey { get; init; } = Orkis.Supervision.SupervisorKeys.Default;
+
     /// <summary>The conversation transcript so far.</summary>
     public List<ChatMessage> Messages { get; init; } = [];
 

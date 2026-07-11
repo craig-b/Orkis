@@ -11,11 +11,14 @@ public sealed class AgentRunnerTests : IDisposable
     private readonly FakeChatClient _chatClient = new();
     private readonly FakeTool _tool = new();
     private readonly ScriptedSupervisor _supervisor = new();
+    private readonly FakeSupervisorResolver _resolver;
     private readonly InMemoryCheckpointStore _checkpointStore = new();
+
+    public AgentRunnerTests() => _resolver = new FakeSupervisorResolver(_supervisor);
 
     public void Dispose() => _chatClient.Dispose();
 
-    private AgentRunner CreateRunner() => new(_chatClient, [_tool], _supervisor, _checkpointStore, TimeProvider.System);
+    private AgentRunner CreateRunner() => new(_chatClient, [_tool], _resolver, _checkpointStore, TimeProvider.System);
 
     private static ChatResponse TextResponse(string text, long inputTokens = 10, long outputTokens = 5) =>
         new(new ChatMessage(ChatRole.Assistant, text))
@@ -156,6 +159,31 @@ public sealed class AgentRunnerTests : IDisposable
         var toolMessage = Assert.Single(_chatClient.Requests[1], m => m.Role == ChatRole.Tool);
         var content = Assert.IsType<FunctionResultContent>(Assert.Single(toolMessage.Contents));
         Assert.Contains("sandbox", content.Result?.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SupervisorKeyFlowsToResolverAndSurvivesResume()
+    {
+        _chatClient.Enqueue(ToolCallResponse("call-1", "fake_tool"));
+        _chatClient.Enqueue(TextResponse("done"));
+        _supervisor.Enqueue(SupervisionDecision.Defer());
+
+        var runner = CreateRunner();
+        var request = new AgentRunRequest
+        {
+            RunId = "run-1",
+            Prompt = "use the tool",
+            SupervisorKey = "strict",
+        };
+
+        var paused = await runner.StartAsync(request);
+        Assert.Equal(RunStatus.AwaitingSupervision, paused.Status);
+
+        var resumed = await runner.ResumeAsync("run-1");
+        Assert.Equal(RunStatus.Completed, resumed.Status);
+
+        // Both segments — including the one rehydrated from the checkpoint — used the run's key.
+        Assert.Equal(["strict", "strict"], _resolver.RequestedKeys);
     }
 
     [Fact]

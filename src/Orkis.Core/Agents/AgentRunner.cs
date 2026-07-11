@@ -20,7 +20,7 @@ public sealed class AgentRunner
     private static readonly JsonSerializerOptions StateJsonOptions = CreateStateJsonOptions();
 
     private readonly IChatClient _chatClient;
-    private readonly ISupervisor _supervisor;
+    private readonly ISupervisorResolver _supervisorResolver;
     private readonly ICheckpointStore _checkpointStore;
     private readonly TimeProvider _timeProvider;
     private readonly FrozenDictionary<string, ITool> _tools;
@@ -29,19 +29,19 @@ public sealed class AgentRunner
     public AgentRunner(
         IChatClient chatClient,
         IEnumerable<ITool> tools,
-        ISupervisor supervisor,
+        ISupervisorResolver supervisorResolver,
         ICheckpointStore checkpointStore,
         TimeProvider timeProvider
     )
     {
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentNullException.ThrowIfNull(tools);
-        ArgumentNullException.ThrowIfNull(supervisor);
+        ArgumentNullException.ThrowIfNull(supervisorResolver);
         ArgumentNullException.ThrowIfNull(checkpointStore);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
         _chatClient = chatClient;
-        _supervisor = supervisor;
+        _supervisorResolver = supervisorResolver;
         _checkpointStore = checkpointStore;
         _timeProvider = timeProvider;
         _tools = tools.ToFrozenDictionary(t => t.Descriptor.Name);
@@ -59,7 +59,12 @@ public sealed class AgentRunner
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var state = new AgentRunState { RunId = request.RunId, Budget = request.Budget };
+        var state = new AgentRunState
+        {
+            RunId = request.RunId,
+            Budget = request.Budget,
+            SupervisorKey = request.SupervisorKey,
+        };
         if (request.SystemPrompt is not null)
         {
             state.Messages.Add(new ChatMessage(ChatRole.System, request.SystemPrompt));
@@ -94,6 +99,7 @@ public sealed class AgentRunner
     private async Task<AgentRunResult> RunLoopAsync(AgentRunState state, CancellationToken cancellationToken)
     {
         var segmentStart = _timeProvider.GetTimestamp();
+        var supervisor = _supervisorResolver.Resolve(state.SupervisorKey);
 
         while (true)
         {
@@ -109,7 +115,8 @@ public sealed class AgentRunner
                 }
 
                 var toolCall = state.PendingToolCalls[0];
-                var result = await ResolveToolCallAsync(state, toolCall, cancellationToken).ConfigureAwait(false);
+                var result = await ResolveToolCallAsync(state, supervisor, toolCall, cancellationToken)
+                    .ConfigureAwait(false);
                 if (result is null)
                 {
                     // Supervision is pending: pause with the call still queued.
@@ -173,6 +180,7 @@ public sealed class AgentRunner
     /// </summary>
     private async Task<ToolResult?> ResolveToolCallAsync(
         AgentRunState state,
+        ISupervisor supervisor,
         ToolCall toolCall,
         CancellationToken cancellationToken
     )
@@ -188,7 +196,7 @@ public sealed class AgentRunner
             Call = toolCall,
             Tool = tool.Descriptor,
         };
-        var decision = await _supervisor.ReviewAsync(action, cancellationToken).ConfigureAwait(false);
+        var decision = await supervisor.ReviewAsync(action, cancellationToken).ConfigureAwait(false);
 
         if (decision.Verdict == SupervisionVerdict.Pending)
         {
