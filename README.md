@@ -43,7 +43,7 @@ src/
   Orkis.Core              Agent loop, orchestration, tool dispatch
   Orkis.Tools.Generator   Source generator for [OrkisTool] methods
   Orkis.Rag.*             Ingestion, vector store, and retrieval implementations
-  Orkis.Runs.*            Run-state persistence (durable checkpoint store backends)
+  Orkis.Runs.*            Run-state persistence (checkpoint store, approval inbox)
   Orkis.Sandbox.*         Sandbox execution implementations (process, bubblewrap, Firecracker)
   Orkis.Host              Composition root and demo entry point
 tests/
@@ -90,6 +90,18 @@ Ctrl-C, or a kill while a tool call sits awaiting approval — can be picked up
 where it left off using the run id printed at the start:
 
 ```sh
+dotnet run --project src/Orkis.Host -- --resume <run-id>
+```
+
+With `--queue`, supervision detaches entirely: instead of prompting inline, risky
+tool calls park in a durable approval inbox and the run pauses. The decision can
+then come from a different terminal — or a different day — and the run picks up
+from its checkpoint:
+
+```sh
+dotnet run --project src/Orkis.Host -- --queue        # pauses awaiting approval
+dotnet run --project src/Orkis.Host -- --approvals    # inspect the inbox
+dotnet run --project src/Orkis.Host -- --approve <call-id> h   # or s; or --deny <call-id> [reason]
 dotnet run --project src/Orkis.Host -- --resume <run-id>
 ```
 

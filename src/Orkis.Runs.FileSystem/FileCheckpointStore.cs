@@ -1,7 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Options;
 
 namespace Orkis.Runs;
@@ -14,9 +11,6 @@ namespace Orkis.Runs;
 /// </summary>
 public sealed class FileCheckpointStore : ICheckpointStore
 {
-    /// <summary>Sanitized run-id prefix length kept for directory readability.</summary>
-    private const int RunIdPrefixLength = 48;
-
     private readonly string _rootPath;
 
     public FileCheckpointStore(IOptions<FileCheckpointStoreOptions> options)
@@ -37,35 +31,10 @@ public sealed class FileCheckpointStore : ICheckpointStore
             runDirectory,
             checkpoint.Sequence.ToString("D19", CultureInfo.InvariantCulture) + ".json"
         );
-        var tempPath = finalPath + "." + Guid.NewGuid().ToString("n") + ".tmp";
 
-        try
-        {
-            var stream = new FileStream(
-                tempPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 4096,
-                FileOptions.Asynchronous
-            );
-            await using (stream.ConfigureAwait(false))
-            {
-                await JsonSerializer
-                    .SerializeAsync(stream, checkpoint, cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
-                stream.Flush(flushToDisk: true);
-            }
-
-            // Same-sequence rewrites win over the previous file, matching the
-            // in-memory store's replace-on-equal-sequence behavior.
-            File.Move(tempPath, finalPath, overwrite: true);
-        }
-        catch
-        {
-            TryDelete(tempPath);
-            throw;
-        }
+        // Same-sequence rewrites win over the previous file, matching the
+        // in-memory store's replace-on-equal-sequence behavior.
+        await AtomicJsonFile.WriteAsync(finalPath, checkpoint, options: null, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -99,49 +68,10 @@ public sealed class FileCheckpointStore : ICheckpointStore
             return null;
         }
 
-        var stream = new FileStream(
-            latestPath,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read,
-            bufferSize: 4096,
-            FileOptions.Asynchronous
-        );
-        await using (stream.ConfigureAwait(false))
-        {
-            return await JsonSerializer
-                .DeserializeAsync<RunCheckpoint>(stream, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-        }
+        return await AtomicJsonFile
+            .ReadAsync<RunCheckpoint>(latestPath, options: null, cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Maps a run id to a directory that is safe regardless of what the id contains: a
-    /// readable sanitized prefix plus a hash of the full id, so ids with path separators
-    /// or other special characters can neither escape the root nor collide after
-    /// sanitization.
-    /// </summary>
-    private string GetRunDirectory(string runId)
-    {
-        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(runId)))[..16];
-
-        Span<char> prefix = stackalloc char[Math.Min(runId.Length, RunIdPrefixLength)];
-        for (var i = 0; i < prefix.Length; i++)
-        {
-            var c = runId[i];
-            prefix[i] = char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '_';
-        }
-
-        return Path.Combine(_rootPath, $"{prefix}-{hash}");
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
-    }
+    private string GetRunDirectory(string runId) => Path.Combine(_rootPath, SafePathNames.For(runId));
 }

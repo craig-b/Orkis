@@ -35,10 +35,6 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 1 — Near-term (well-specified, clear next steps)
 
-- **Queue-based asynchronous supervisor** `[scaffold]` — the `Pending` verdict and
-  checkpoint-on-pause already exist, but `ConsoleSupervisor` blocks inline (so a human's
-  thinking time counts against `MaxDuration`). A supervisor that returns `Pending` and
-  resumes on an out-of-band decision is the shape a real approval UI needs.
 - **Workspaces — Layer 1: durable, mountable working directory** `[idea]` — an
   `IWorkspace` that outlives a single execution; the sandbox mounts it instead of a
   throwaway scratch. Backends: host directory (bind-mount), block image (Firecracker
@@ -88,9 +84,9 @@ The through-lines these ideas are meant to respect:
   The dockerd/containerd shape. The daemon is one composition root among several, never
   required: the libraries stay embeddable in-process. The key design surface is the
   typed run-event stream (turn progress, tool calls, cost, pending approvals), which
-  doubles as the observability and eval-recording surface. Prerequisites: a durable
-  checkpoint store (built: `FileCheckpointStore`) and the queue-based supervisor from
-  Tier 1, which make run state detachable in the first place.
+  doubles as the observability and eval-recording surface. Its prerequisites are now
+  built: the durable checkpoint store (`FileCheckpointStore`) and the queue-based
+  supervisor (`QueueSupervisor` over `IApprovalInbox`) make run state detachable.
 
 ## Tier 3 — Exploratory (needs more design; security- or complexity-heavy)
 

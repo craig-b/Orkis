@@ -26,9 +26,86 @@ if (resumeIndex >= 0)
 
 var offline = argList.Contains("--offline");
 var yolo = argList.Contains("--yolo");
+var queueMode = argList.Contains("--queue");
 var prompt =
     argList.FirstOrDefault(static a => !a.StartsWith('-'))
     ?? "Check the current time, then run a shell command that prints a greeting and the working directory.";
+
+// The approval inbox verbs operate on the queue directly — no model or agent needed.
+var approvalsDir =
+    Environment.GetEnvironmentVariable("ORKIS_APPROVAL_DIR")
+    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "orkis", "approvals");
+IApprovalInbox CreateApprovalInbox() =>
+    new FileApprovalInbox(
+        Microsoft.Extensions.Options.Options.Create(new FileApprovalInboxOptions { RootPath = approvalsDir })
+    );
+
+if (argList.Contains("--approvals"))
+{
+    var pending = await CreateApprovalInbox().ListPendingAsync();
+    if (pending.Count == 0)
+    {
+        Console.WriteLine("no pending approvals");
+        return 0;
+    }
+
+    foreach (var approval in pending)
+    {
+        Console.WriteLine($"run {approval.RunId}");
+        Console.WriteLine(
+            $"  call {approval.Call.Id} — {approval.Call.ToolName} "
+                + $"(risk: {approval.Tool.Risk}, requested {approval.RequestedAt:u})"
+        );
+        Console.WriteLine($"  arguments: {approval.Call.Arguments.GetRawText()}");
+        Console.WriteLine($"  decide: --approve {approval.Call.Id} [h|s] | --deny {approval.Call.Id} [reason]");
+    }
+
+    return 0;
+}
+
+var approveIndex = argList.IndexOf("--approve");
+var denyIndex = argList.IndexOf("--deny");
+if (approveIndex >= 0 || denyIndex >= 0)
+{
+    var approving = approveIndex >= 0;
+    var verbIndex = approving ? approveIndex : denyIndex;
+    if (verbIndex + 1 >= argList.Count || argList[verbIndex + 1].StartsWith('-'))
+    {
+        Console.Error.WriteLine($"{(approving ? "--approve" : "--deny")} requires a call id (see --approvals).");
+        return 1;
+    }
+
+    var callId = argList[verbIndex + 1];
+    var extra = verbIndex + 2 < argList.Count ? argList[verbIndex + 2] : null;
+    if (extra is not null && extra.StartsWith('-'))
+    {
+        extra = null;
+    }
+
+    var queue = CreateApprovalInbox();
+    var matches = (await queue.ListPendingAsync()).Where(p => p.Call.Id == callId).ToList();
+    if (matches.Count == 0)
+    {
+        Console.Error.WriteLine($"No pending approval with call id '{callId}'.");
+        return 1;
+    }
+
+    if (matches.Count > 1)
+    {
+        Console.Error.WriteLine($"Call id '{callId}' is pending in multiple runs; cannot decide unambiguously.");
+        return 1;
+    }
+
+    var target = matches[0];
+    var decision = approving
+        ? extra is "s" or "sandbox" ? SupervisionDecision.Approve(SandboxLevel.Standard) : SupervisionDecision.Approve()
+        : SupervisionDecision.Deny(extra ?? "The operator denied this action.");
+    await queue.DecideAsync(target.RunId, target.Call.Id, decision);
+
+    Console.WriteLine($"{(approving ? "approved" : "denied")}: {target.Call.ToolName} (call {callId})");
+    Console.WriteLine($"resume the run with: --resume {target.RunId}");
+    return 0;
+}
 
 var anthropicKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
 var openAiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
@@ -109,6 +186,17 @@ switch (sandbox)
 services.AddOrkisHostSandbox();
 services.AddOrkisSupervisor<ConsoleSupervisor>();
 services.AddOrkisSupervisor<AutoApproveSupervisor>("yolo");
+
+// Queue supervision (--queue): read-only tools pass, everything else parks in the
+// durable approval inbox and the run pauses until a decision arrives out of band.
+services.AddOrkisFileApprovalInbox(options => options.RootPath = approvalsDir);
+services.AddOrkisSupervisor(
+    "queue",
+    static sp => new ThresholdSupervisor(
+        ToolRisk.ReadOnly,
+        new QueueSupervisor(sp.GetRequiredService<IApprovalInbox>(), sp.GetRequiredService<TimeProvider>())
+    )
+);
 services.AddOrkisPricing(cost =>
 {
     // Indicative prices per million tokens — verify against current published pricing.
@@ -177,7 +265,9 @@ else
         Prompt = prompt,
         SystemPrompt =
             "You are the Orkis demo agent. Use the available tools to fulfil the request, then summarize what happened.",
-        SupervisorKey = yolo ? "yolo" : SupervisorKeys.Default,
+        SupervisorKey = yolo ? "yolo"
+            : queueMode ? "queue"
+            : SupervisorKeys.Default,
         Budget = new RunBudget { MaxToolCalls = 10, MaxTokens = 100_000 },
     };
 
@@ -200,5 +290,10 @@ Console.WriteLine(
         + $"{result.Usage.ToolCalls} tool call(s), cost {result.Usage.Cost:0.####}, "
         + $"active {result.Usage.ActiveDuration.TotalSeconds:0.00}s"
 );
+
+if (result.Status == RunStatus.AwaitingSupervision)
+{
+    Console.WriteLine($"awaiting approval — list with --approvals, decide, then rerun with --resume {result.RunId}");
+}
 
 return result.Status == RunStatus.Completed ? 0 : 2;

@@ -21,6 +21,7 @@ public static class OrkisServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<ICheckpointStore, InMemoryCheckpointStore>();
+        services.TryAddSingleton<IApprovalInbox, InMemoryApprovalInbox>();
         services.TryAddSingleton<ISupervisorResolver, KeyedServiceSupervisorResolver>();
         services.TryAddSingleton<ICostCalculator>(NullCostCalculator.Instance);
         services.TryAddSingleton<AgentRunner>();
