@@ -6,6 +6,7 @@
   <ItemGroup>
     <PackageReference Include="Anthropic.SDK" />
     <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
