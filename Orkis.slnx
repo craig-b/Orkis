@@ -3,11 +3,13 @@
         <Project Path="src/Orkis.Abstractions/Orkis.Abstractions.csproj" />
         <Project Path="src/Orkis.Core/Orkis.Core.csproj" />
         <Project Path="src/Orkis.Host/Orkis.Host.csproj" />
+        <Project Path="src/Orkis.Rag/Orkis.Rag.csproj" />
         <Project Path="src/Orkis.Sandbox.Process/Orkis.Sandbox.Process.csproj" />
         <Project Path="src/Orkis.Tools.Generator/Orkis.Tools.Generator.csproj" />
     </Folder>
     <Folder Name="/tests/">
         <Project Path="tests/Orkis.Core.Tests/Orkis.Core.Tests.csproj" />
+        <Project Path="tests/Orkis.Rag.Tests/Orkis.Rag.Tests.csproj" />
         <Project Path="tests/Orkis.Sandbox.Process.Tests/Orkis.Sandbox.Process.Tests.csproj" />
         <Project Path="tests/Orkis.Tools.Generator.Tests/Orkis.Tools.Generator.Tests.csproj" />
     </Folder>
