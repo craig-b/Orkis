@@ -84,6 +84,16 @@ The through-lines these ideas are meant to respect:
 - **Execution floor** `[idea]` — a global minimum sandbox level ("everything runs in
   Firecracker"). Distinct from workspace flow policy: this governs where *code* runs, not
   where *data* goes.
+- **Daemon host + client protocol** `[idea]` — a long-lived host process that owns the
+  stateful side (run registry, checkpoint adoption on restart, supervision inbox,
+  workspace/sandbox lifetimes, privileged network setup), with thin UIs — CLI, web,
+  editor — talking to it over a wire protocol (gRPC over a Unix socket or SSE/SignalR).
+  The dockerd/containerd shape. The daemon is one composition root among several, never
+  required: the libraries stay embeddable in-process. The key design surface is the
+  typed run-event stream (turn progress, tool calls, cost, pending approvals), which
+  doubles as the observability and eval-recording surface. Prerequisites: the durable
+  checkpoint store and queue-based supervisor from Tier 1, which make run state
+  detachable in the first place.
 
 ## Tier 3 — Exploratory (needs more design; security- or complexity-heavy)
 
@@ -107,6 +117,16 @@ The through-lines these ideas are meant to respect:
   behavioural regression suites, and LLM-as-judge scoring.
 - **Firecracker jailer + teardown hardening** `[idea]` — run Firecracker under its jailer
   and harden per-VM teardown for production use.
+- **Batteries-included distribution (compose stack)** `[idea]` — the imagined end state:
+  a preconfigured docker-compose-style stack — the daemon, a web UI, Postgres, and an
+  S3-compatible object store (e.g. MinIO) — plus a TUI client that connects from outside.
+  Postgres pulls multi-duty behind several abstractions (checkpoint store, pgvector
+  retrieval, memory, supervision queue); the object store backs workspaces and artifacts.
+  Depends on the daemon + client protocol. Its real value today is as design pressure:
+  every abstraction must eventually have an out-of-process, shared-infrastructure
+  backend, so no interface may assume in-memory or single-process state. Note: compose
+  here is packaging/deployment only — sandboxing stays bubblewrap/Firecracker, and a
+  containerised daemon needs `/dev/kvm` passthrough for the Firecracker path.
 
 ## Polish
 
