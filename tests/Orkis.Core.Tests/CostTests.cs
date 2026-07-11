@@ -62,6 +62,21 @@ public sealed class PriceTableCostCalculatorTests
     }
 
     [Fact]
+    public void SnapshotModelIdMatchesBaseIdAtWordBoundary()
+    {
+        var calculator = CreateCalculator(o =>
+        {
+            o.Models["gpt-5"] = new ModelPrice { InputPerMillionTokens = 100m, OutputPerMillionTokens = 100m };
+            o.Models["gpt-5-mini"] = new ModelPrice { InputPerMillionTokens = 1m, OutputPerMillionTokens = 1m };
+        });
+
+        var usage = new TokenUsage { InputTokens = 1_000_000, ModelId = "gpt-5-mini-2025-08-07" };
+
+        // Longest boundary-aware prefix wins: gpt-5-mini, not gpt-5.
+        Assert.Equal(1m, calculator.Calculate(usage));
+    }
+
+    [Fact]
     public void UnknownModelUsesFallbackOrZero()
     {
         var withFallback = CreateCalculator(o =>

@@ -20,10 +20,7 @@ public sealed class PriceTableCostCalculator : ICostCalculator
     {
         ArgumentNullException.ThrowIfNull(usage);
 
-        var price =
-            usage.ModelId is { } modelId && _options.Models.TryGetValue(modelId, out var configured)
-                ? configured
-                : _options.Fallback;
+        var price = ResolvePrice(usage.ModelId);
         if (price is null)
         {
             return 0m;
@@ -42,5 +39,41 @@ public sealed class PriceTableCostCalculator : ICostCalculator
         }
 
         return cost;
+    }
+
+    /// <summary>
+    /// Finds the price for a model id: exact match first, then the longest configured id
+    /// that prefixes it at a '-' boundary — providers report dated snapshot ids
+    /// (e.g. "gpt-5-mini-2025-08-07") that hosts configure by base id ("gpt-5-mini").
+    /// </summary>
+    private ModelPrice? ResolvePrice(string? modelId)
+    {
+        if (modelId is null)
+        {
+            return _options.Fallback;
+        }
+
+        if (_options.Models.TryGetValue(modelId, out var exact))
+        {
+            return exact;
+        }
+
+        ModelPrice? bestPrice = null;
+        var bestLength = -1;
+        foreach (var (configuredId, price) in _options.Models)
+        {
+            if (
+                configuredId.Length > bestLength
+                && modelId.Length > configuredId.Length
+                && modelId[configuredId.Length] == '-'
+                && modelId.StartsWith(configuredId, StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                bestPrice = price;
+                bestLength = configuredId.Length;
+            }
+        }
+
+        return bestPrice ?? _options.Fallback;
     }
 }
