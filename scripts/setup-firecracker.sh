@@ -46,7 +46,12 @@ echo "Building rootfs..."
 ROOT="$STAGING/root"
 mkdir -p "$ROOT"/{bin,sbin,dev,proc,sys,tmp,work,etc}
 cp "$BUSYBOX" "$ROOT/bin/busybox"
-for applet in sh cat mount umount reboot printenv ls; do
+# Symlink every applet this busybox build provides — a full BusyBox userland
+# (grep, sed, awk, find, tar, gzip, wget, xargs, diff, vi, ...) for near-zero size.
+# Skip "busybox" itself: --list includes it, and a busybox->busybox symlink would
+# replace the real binary with a self-referential loop (init fails with ELOOP).
+for applet in $("$BUSYBOX" --list); do
+  [ "$applet" = "busybox" ] && continue
   ln -sf busybox "$ROOT/bin/$applet"
 done
 
