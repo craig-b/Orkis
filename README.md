@@ -43,6 +43,7 @@ src/
   Orkis.Core              Agent loop, orchestration, tool dispatch
   Orkis.Tools.Generator   Source generator for [OrkisTool] methods
   Orkis.Rag.*             Ingestion, vector store, and retrieval implementations
+  Orkis.Runs.*            Run-state persistence (durable checkpoint store backends)
   Orkis.Sandbox.*         Sandbox execution implementations (process, bubblewrap, Firecracker)
   Orkis.Host              Composition root and demo entry point
 tests/
@@ -82,6 +83,15 @@ The demo auto-selects the strongest available sandbox — Firecracker micro-VMs
 (requires KVM; run `scripts/setup-firecracker.sh` once to provision the guest
 kernel and rootfs), then bubblewrap, then plain process isolation — overridable
 with `ORKIS_SANDBOX=firecracker|bubblewrap|process`.
+
+Runs checkpoint to disk after every step (under the local application data
+directory; override with `ORKIS_CHECKPOINT_DIR`), so an interrupted run — crash,
+Ctrl-C, or a kill while a tool call sits awaiting approval — can be picked up
+where it left off using the run id printed at the start:
+
+```sh
+dotnet run --project src/Orkis.Host -- --resume <run-id>
+```
 
 ## License
 

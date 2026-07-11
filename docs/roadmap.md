@@ -35,9 +35,6 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 1 — Near-term (well-specified, clear next steps)
 
-- **Persistent/durable checkpoint store** `[scaffold]` — durable execution currently
-  only survives in-process (`InMemoryCheckpointStore`). A restart-surviving store makes
-  pause/resume genuinely durable. Small, clear.
 - **Queue-based asynchronous supervisor** `[scaffold]` — the `Pending` verdict and
   checkpoint-on-pause already exist, but `ConsoleSupervisor` blocks inline (so a human's
   thinking time counts against `MaxDuration`). A supervisor that returns `Pending` and
@@ -91,9 +88,9 @@ The through-lines these ideas are meant to respect:
   The dockerd/containerd shape. The daemon is one composition root among several, never
   required: the libraries stay embeddable in-process. The key design surface is the
   typed run-event stream (turn progress, tool calls, cost, pending approvals), which
-  doubles as the observability and eval-recording surface. Prerequisites: the durable
-  checkpoint store and queue-based supervisor from Tier 1, which make run state
-  detachable in the first place.
+  doubles as the observability and eval-recording surface. Prerequisites: a durable
+  checkpoint store (built: `FileCheckpointStore`) and the queue-based supervisor from
+  Tier 1, which make run state detachable in the first place.
 
 ## Tier 3 — Exploratory (needs more design; security- or complexity-heavy)
 

@@ -9,10 +9,25 @@ using Orkis.Sandboxing;
 using Orkis.Supervision;
 using Orkis.Tools;
 
-var offline = args.Contains("--offline");
-var yolo = args.Contains("--yolo");
+var argList = args.ToList();
+string? resumeRunId = null;
+var resumeIndex = argList.IndexOf("--resume");
+if (resumeIndex >= 0)
+{
+    if (resumeIndex + 1 >= argList.Count)
+    {
+        Console.Error.WriteLine("--resume requires a run id (shown when the run starts).");
+        return 1;
+    }
+
+    resumeRunId = argList[resumeIndex + 1];
+    argList.RemoveRange(resumeIndex, 2);
+}
+
+var offline = argList.Contains("--offline");
+var yolo = argList.Contains("--yolo");
 var prompt =
-    args.FirstOrDefault(static a => !a.StartsWith('-'))
+    argList.FirstOrDefault(static a => !a.StartsWith('-'))
     ?? "Check the current time, then run a shell command that prints a greeting and the working directory.";
 
 var anthropicKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
@@ -65,6 +80,12 @@ if (sandbox == "firecracker" && !firecrackerReady)
 
 var services = new ServiceCollection();
 services.AddOrkis();
+
+// Durable checkpoints: runs survive a process restart and can be picked up with --resume.
+var checkpointDir =
+    Environment.GetEnvironmentVariable("ORKIS_CHECKPOINT_DIR")
+    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "orkis", "checkpoints");
+services.AddOrkisFileCheckpointStore(options => options.RootPath = checkpointDir);
 switch (sandbox)
 {
     case "firecracker":
@@ -128,23 +149,48 @@ services.AddSingleton(
 await using var serviceProvider = services.BuildServiceProvider();
 var runner = serviceProvider.GetRequiredService<AgentRunner>();
 
-var request = new AgentRunRequest
+AgentRunResult result;
+if (resumeRunId is not null)
 {
-    Prompt = prompt,
-    SystemPrompt =
-        "You are the Orkis demo agent. Use the available tools to fulfil the request, then summarize what happened.",
-    SupervisorKey = yolo ? "yolo" : SupervisorKeys.Default,
-    Budget = new RunBudget { MaxToolCalls = 10, MaxTokens = 100_000 },
-};
+    // Budget, transcript, and supervisor key all come from the checkpoint.
+    Console.WriteLine($"orkis demo | resuming run {resumeRunId}");
+    Console.WriteLine($"mode: {(offline ? "offline (scripted model)" : $"live ({provider}: {model})")}");
+    Console.WriteLine($"sandbox: {sandbox} isolation + host execution ([h]/[s] at each prompt)");
+    Console.WriteLine($"checkpoints: {checkpointDir}");
+    Console.WriteLine();
 
-Console.WriteLine($"orkis demo | run {request.RunId}");
-Console.WriteLine($"mode: {(offline ? "offline (scripted model)" : $"live ({provider}: {model})")}");
-Console.WriteLine($"supervision: {request.SupervisorKey}");
-Console.WriteLine($"sandbox: {sandbox} isolation + host execution ([h]/[s] at each prompt)");
-Console.WriteLine($"prompt: {prompt}");
-Console.WriteLine();
+    try
+    {
+        result = await runner.ResumeAsync(resumeRunId);
+    }
+    catch (InvalidOperationException ex)
+    {
+        // No checkpoint under this id, or the run already ended.
+        Console.Error.WriteLine(ex.Message);
+        return 1;
+    }
+}
+else
+{
+    var request = new AgentRunRequest
+    {
+        Prompt = prompt,
+        SystemPrompt =
+            "You are the Orkis demo agent. Use the available tools to fulfil the request, then summarize what happened.",
+        SupervisorKey = yolo ? "yolo" : SupervisorKeys.Default,
+        Budget = new RunBudget { MaxToolCalls = 10, MaxTokens = 100_000 },
+    };
 
-var result = await runner.StartAsync(request);
+    Console.WriteLine($"orkis demo | run {request.RunId}");
+    Console.WriteLine($"mode: {(offline ? "offline (scripted model)" : $"live ({provider}: {model})")}");
+    Console.WriteLine($"supervision: {request.SupervisorKey}");
+    Console.WriteLine($"sandbox: {sandbox} isolation + host execution ([h]/[s] at each prompt)");
+    Console.WriteLine($"checkpoints: {checkpointDir} (interrupted? resume with --resume {request.RunId})");
+    Console.WriteLine($"prompt: {prompt}");
+    Console.WriteLine();
+
+    result = await runner.StartAsync(request);
+}
 
 Console.WriteLine();
 Console.WriteLine($"status: {result.Status}");
