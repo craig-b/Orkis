@@ -90,6 +90,15 @@ Shell commands run in a persistent workspace scoped per sandbox type
 — or one run — are still there for the next, even across a Firecracker VM's
 boot-per-command lifecycle.
 
+Files leave a workspace only through the artifact store: the agent's
+`promote_artifact` tool lifts a file out (a supervised trust decision), and
+`stage_artifact` copies an artifact back into workspaces. List what has been
+promoted with:
+
+```sh
+dotnet run --project src/Orkis.Host -- --artifacts
+```
+
 Runs checkpoint to disk after every step (under the local application data
 directory; override with `ORKIS_CHECKPOINT_DIR`), so an interrupted run — crash,
 Ctrl-C, or a kill while a tool call sits awaiting approval — can be picked up

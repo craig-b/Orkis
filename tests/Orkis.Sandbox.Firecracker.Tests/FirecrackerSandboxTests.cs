@@ -92,6 +92,66 @@ public sealed class FirecrackerSandboxTests
     }
 
     [Fact]
+    public async Task WorkspaceFileAccessRoundTripsThroughTheImage()
+    {
+        if (!Available)
+        {
+            return;
+        }
+
+        var workingRoot = Path.Combine(Path.GetTempPath(), $"orkis-fc-wfa-{Guid.NewGuid():n}");
+        try
+        {
+            var sandbox = new FirecrackerSandbox(
+                Options.Create(
+                    new FirecrackerSandboxOptions
+                    {
+                        KernelImagePath = KernelPath,
+                        RootfsImagePath = RootfsPath,
+                        WorkingRoot = workingRoot,
+                    }
+                )
+            );
+
+            // Stage a file into the (not yet existing) workspace image, then read it from a VM.
+            using (var content = new MemoryStream("staged-for-vm"u8.ToArray()))
+            {
+                await sandbox.WriteWorkspaceFileAsync("chat-1", "input/data.txt", content);
+            }
+
+            var read = await sandbox.ExecuteAsync(Shell("cat input/data.txt") with { WorkspaceKey = "chat-1" });
+            Assert.Equal(0, read.ExitCode);
+            Assert.Equal("staged-for-vm", read.StandardOutput.Trim());
+
+            // Now the reverse: a VM writes a file, the host pulls it out via debugfs.
+            var write = await sandbox.ExecuteAsync(
+                Shell("printf from-the-vm > produced.txt") with
+                {
+                    WorkspaceKey = "chat-1",
+                }
+            );
+            Assert.Equal(0, write.ExitCode);
+
+            var stream = await sandbox.ReadWorkspaceFileAsync("chat-1", "produced.txt");
+            Assert.NotNull(stream);
+            await using (stream)
+            {
+                using var reader = new StreamReader(stream);
+                Assert.Equal("from-the-vm", await reader.ReadToEndAsync());
+            }
+
+            Assert.Null(await sandbox.ReadWorkspaceFileAsync("chat-1", "absent.txt"));
+        }
+        finally
+        {
+            if (Directory.Exists(workingRoot))
+            {
+                Directory.Delete(workingRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task RunsCommandInMicroVmAndCapturesOutput()
     {
         if (!Available)

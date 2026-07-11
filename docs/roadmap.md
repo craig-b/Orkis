@@ -17,7 +17,7 @@ The through-lines these ideas are meant to respect:
    interface in the abstractions package with concrete backends chosen at the
    composition root. New backends never depend on each other.
 2. **Supervision is the single choke point for capability grants.** Sandbox isolation
-   level, network reach, and (future) artifact promotion/staging are three facets of
+   level, network reach, and artifact promotion/staging are three facets of
    one trust lattice. Each is granted per run, and every grant is auditable in the
    trace. Adding a capability means adding a facet the supervisor can grant — never an
    ambient default.
@@ -40,14 +40,6 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 1 — Near-term (well-specified, clear next steps)
 
-- **Artifact store + promote/stage tools** `[idea]` — `IArtifactStore` (filesystem
-  backend first, S3-compatible later for the compose stack) plus two ordinary `ITool`s:
-  `promote_artifact(path, name)` pulls a file out of the current workspace into the
-  store, `stage_artifact(name, path)` copies one in. Orchestrator-mediated transfer —
-  sandboxed code never holds store credentials: a host-directory workspace is a file
-  copy, a Firecracker image is read/written with `debugfs` while cold (or via the guest
-  agent while warm). Promotion is the trust gate: the only way untrusted output rises,
-  as a supervisable, auditable tool call. Staging is the future confidentiality gate.
 - **Firecracker guest agent + VM reuse** `[idea]` — a small agent inside the guest
   (vsock exec protocol: run command, stream stdout/stderr/exit) so one VM per
   (workspace, sandbox type) serves many commands: boot latency amortised, in-memory

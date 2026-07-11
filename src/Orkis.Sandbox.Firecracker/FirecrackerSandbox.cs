@@ -29,7 +29,7 @@ namespace Orkis.Sandboxing;
 /// under its jailer; this implementation launches it directly.
 /// </para>
 /// </remarks>
-public sealed class FirecrackerSandbox : ISandbox
+public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess
 {
     private const string StdoutMarker = "===ORKIS:STDOUT===";
     private const string StderrMarker = "===ORKIS:STDERR===";
@@ -89,11 +89,8 @@ public sealed class FirecrackerSandbox : ISandbox
 
             if (request.WorkspaceKey is { } key)
             {
-                var workspacesDirectory = Path.Combine(_options.WorkingRoot, "workspaces");
-                Directory.CreateDirectory(workspacesDirectory);
-                var workspaceImage = Path.GetFullPath(
-                    Path.Combine(workspacesDirectory, SafePathNames.For(key) + ".ext4")
-                );
+                var workspaceImage = GetWorkspaceImagePath(key);
+                Directory.CreateDirectory(Path.GetDirectoryName(workspaceImage)!);
 
                 var gate = WorkspaceGates.GetOrAdd(workspaceImage, static _ => new SemaphoreSlim(1, 1));
                 await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -101,6 +98,7 @@ public sealed class FirecrackerSandbox : ISandbox
                 {
                     if (File.Exists(workspaceImage))
                     {
+                        await ReplayJournalAsync(workspaceImage, cancellationToken).ConfigureAwait(false);
                         var scriptPath = Path.Combine(stagingDirectory, ".orkis", "command.sh");
                         await InjectCommandScriptAsync(workspaceImage, scriptPath, cancellationToken)
                             .ConfigureAwait(false);
@@ -165,26 +163,194 @@ public sealed class FirecrackerSandbox : ISandbox
     /// Places this execution's command script at /.orkis/command.sh inside an existing
     /// unmounted workspace image, via debugfs so no mount (and no root) is needed.
     /// </summary>
-    private async Task InjectCommandScriptAsync(
+    private Task InjectCommandScriptAsync(string imagePath, string scriptPath, CancellationToken cancellationToken) =>
+        InjectFileAsync(imagePath, scriptPath, ".orkis/command.sh", cancellationToken);
+
+    /// <summary>Places a host file at a path inside an unmounted ext4 image via debugfs.</summary>
+    private async Task InjectFileAsync(
         string imagePath,
-        string scriptPath,
+        string hostFilePath,
+        string imageRelativePath,
         CancellationToken cancellationToken
     )
     {
         // mkdir and rm fail harmlessly when the directory already exists or the file is
         // absent, and debugfs exits 0 even when a request fails — correctness rests on
         // the stat verification at the end.
-        await RunDebugfsAsync(imagePath, "mkdir /.orkis", cancellationToken).ConfigureAwait(false);
-        await RunDebugfsAsync(imagePath, "rm /.orkis/command.sh", cancellationToken).ConfigureAwait(false);
-        await RunDebugfsAsync(imagePath, $"write {scriptPath} /.orkis/command.sh", cancellationToken)
+        var segments = imageRelativePath.Split('/');
+        for (var i = 1; i < segments.Length; i++)
+        {
+            var parent = string.Join('/', segments[..i]);
+            await RunDebugfsAsync(imagePath, $"mkdir /{parent}", cancellationToken).ConfigureAwait(false);
+        }
+
+        await RunDebugfsAsync(imagePath, $"rm /{imageRelativePath}", cancellationToken).ConfigureAwait(false);
+        await RunDebugfsAsync(imagePath, $"write {hostFilePath} /{imageRelativePath}", cancellationToken)
             .ConfigureAwait(false);
 
-        var stat = await RunDebugfsAsync(imagePath, "stat /.orkis/command.sh", cancellationToken)
+        var stat = await RunDebugfsAsync(imagePath, $"stat /{imageRelativePath}", cancellationToken)
             .ConfigureAwait(false);
         if (!stat.StandardOutput.Contains("Type: regular", StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
-                $"Injecting the command script into workspace image '{imagePath}' failed: {stat.StandardError}"
+                $"Writing '{imageRelativePath}' into workspace image '{imagePath}' failed: {stat.StandardError}"
+            );
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<Stream?> ReadWorkspaceFileAsync(
+        string workspaceKey,
+        string relativePath,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var imageRelativePath = ValidateWorkspaceRelativePath(relativePath);
+        ArgumentException.ThrowIfNullOrEmpty(workspaceKey);
+
+        var imagePath = GetWorkspaceImagePath(workspaceKey);
+        if (!File.Exists(imagePath))
+        {
+            return null;
+        }
+
+        var gate = WorkspaceGates.GetOrAdd(imagePath, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await ReplayJournalAsync(imagePath, cancellationToken).ConfigureAwait(false);
+            var tempPath = Path.Combine(Path.GetTempPath(), "orkis-dump-" + Guid.CreateVersion7().ToString("n"));
+            try
+            {
+                await RunDebugfsAsync(imagePath, $"dump /{imageRelativePath} {tempPath}", cancellationToken)
+                    .ConfigureAwait(false);
+                if (!File.Exists(tempPath))
+                {
+                    return null;
+                }
+
+                var bytes = await File.ReadAllBytesAsync(tempPath, cancellationToken).ConfigureAwait(false);
+                return new MemoryStream(bytes, writable: false);
+            }
+            finally
+            {
+                if (File.Exists(tempPath))
+                {
+                    File.Delete(tempPath);
+                }
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task WriteWorkspaceFileAsync(
+        string workspaceKey,
+        string relativePath,
+        Stream content,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var imageRelativePath = ValidateWorkspaceRelativePath(relativePath);
+        ArgumentException.ThrowIfNullOrEmpty(workspaceKey);
+        ArgumentNullException.ThrowIfNull(content);
+
+        var imagePath = GetWorkspaceImagePath(workspaceKey);
+        Directory.CreateDirectory(Path.GetDirectoryName(imagePath)!);
+
+        var gate = WorkspaceGates.GetOrAdd(imagePath, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!File.Exists(imagePath))
+            {
+                var emptyStaging = Path.Combine(
+                    Path.GetTempPath(),
+                    "orkis-staging-" + Guid.CreateVersion7().ToString("n")
+                );
+                Directory.CreateDirectory(emptyStaging);
+                try
+                {
+                    await BuildScratchImageAsync(emptyStaging, imagePath, cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    TryDeleteDirectory(emptyStaging);
+                }
+            }
+            else
+            {
+                await ReplayJournalAsync(imagePath, cancellationToken).ConfigureAwait(false);
+            }
+
+            var tempPath = Path.Combine(Path.GetTempPath(), "orkis-stage-" + Guid.CreateVersion7().ToString("n"));
+            try
+            {
+                var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                await using (stream.ConfigureAwait(false))
+                {
+                    await content.CopyToAsync(stream, cancellationToken).ConfigureAwait(false);
+                }
+
+                await InjectFileAsync(imagePath, tempPath, imageRelativePath, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (File.Exists(tempPath))
+                {
+                    File.Delete(tempPath);
+                }
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private string GetWorkspaceImagePath(string workspaceKey) =>
+        Path.GetFullPath(Path.Combine(_options.WorkingRoot, "workspaces", SafePathNames.For(workspaceKey) + ".ext4"));
+
+    private static string ValidateWorkspaceRelativePath(string relativePath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(relativePath);
+        var normalized = relativePath.Replace('\\', '/').Trim('/');
+        if (Path.IsPathRooted(relativePath) || normalized.Split('/').Contains(".."))
+        {
+            throw new ArgumentException(
+                "The path must be relative and inside the workspace.",
+                nameof(relativePath)
+            );
+        }
+
+        return normalized;
+    }
+
+    /// <summary>
+    /// Replays the image's ext4 journal (e2fsck preen) so debugfs sees current
+    /// metadata. A guest that halts without a clean unmount leaves the journal dirty,
+    /// and debugfs neither replays nor updates a journal — skipping this would lose
+    /// debugfs's changes to the kernel's own replay at the next mount.
+    /// </summary>
+    private async Task ReplayJournalAsync(string imagePath, CancellationToken cancellationToken)
+    {
+        var startInfo = new ProcessStartInfo { FileName = _options.E2fsckPath };
+        startInfo.ArgumentList.Add("-fp");
+        startInfo.ArgumentList.Add(imagePath);
+
+        var outcome = await FirecrackerProcess
+            .RunAsync(startInfo, TimeSpan.FromSeconds(60), 8192, _timeProvider, cancellationToken)
+            .ConfigureAwait(false);
+
+        // 0 = clean, 1 = errors corrected, 2 = corrected with reboot advised (moot for
+        // an unmounted image); anything higher means the image is genuinely damaged.
+        if (outcome.ExitCode > 2)
+        {
+            throw new InvalidOperationException(
+                $"Repairing workspace image '{imagePath}' failed (e2fsck exit {outcome.ExitCode}): {outcome.StandardError}"
             );
         }
     }

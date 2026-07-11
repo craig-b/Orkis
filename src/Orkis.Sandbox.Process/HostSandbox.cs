@@ -28,7 +28,7 @@ public sealed class HostSandboxOptions
 /// does not. Commands still run in a scratch working directory and are subject to a
 /// timeout and output caps, but those are conveniences, not containment.
 /// </remarks>
-public sealed class HostSandbox : ISandbox
+public sealed class HostSandbox : ISandbox, IWorkspaceFileAccess
 {
     private readonly HostSandboxOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -43,6 +43,21 @@ public sealed class HostSandbox : ISandbox
 
     /// <inheritdoc />
     public SandboxLevel Level => SandboxLevel.None;
+
+    /// <inheritdoc />
+    public Task<Stream?> ReadWorkspaceFileAsync(
+        string workspaceKey,
+        string relativePath,
+        CancellationToken cancellationToken = default
+    ) => SandboxScratch.OpenWorkspaceFileAsync(_options.WorkingRoot, workspaceKey, relativePath);
+
+    /// <inheritdoc />
+    public Task WriteWorkspaceFileAsync(
+        string workspaceKey,
+        string relativePath,
+        Stream content,
+        CancellationToken cancellationToken = default
+    ) => SandboxScratch.WriteWorkspaceFileAsync(_options.WorkingRoot, workspaceKey, relativePath, content, cancellationToken);
 
     /// <inheritdoc />
     public async Task<SandboxExecutionResult> ExecuteAsync(

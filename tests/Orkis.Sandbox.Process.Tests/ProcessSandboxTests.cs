@@ -82,6 +82,53 @@ public sealed class ProcessSandboxTests : IDisposable
     }
 
     [Fact]
+    public async Task WorkspaceFileAccessReadsWhatCommandsWrote()
+    {
+        var sandbox = CreateSandbox();
+        await sandbox.ExecuteAsync(Shell("mkdir -p out; printf inner-content > out/report.txt") with { WorkspaceKey = "chat-1" });
+
+        var stream = await sandbox.ReadWorkspaceFileAsync("chat-1", "out/report.txt");
+
+        Assert.NotNull(stream);
+        await using (stream)
+        {
+            using var reader = new StreamReader(stream);
+            Assert.Equal("inner-content", await reader.ReadToEndAsync());
+        }
+    }
+
+    [Fact]
+    public async Task WorkspaceFileAccessWritesWhatCommandsCanRead()
+    {
+        var sandbox = CreateSandbox();
+        using var content = new MemoryStream("staged-content"u8.ToArray());
+        await sandbox.WriteWorkspaceFileAsync("chat-1", "input/data.txt", content);
+
+        var result = await sandbox.ExecuteAsync(Shell("cat input/data.txt") with { WorkspaceKey = "chat-1" });
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("staged-content", result.StandardOutput.Trim());
+    }
+
+    [Fact]
+    public async Task WorkspaceFileAccessReturnsNullForMissingFiles()
+    {
+        Assert.Null(await CreateSandbox().ReadWorkspaceFileAsync("chat-1", "nope.txt"));
+    }
+
+    [Fact]
+    public async Task WorkspaceFileAccessRejectsEscapingPaths()
+    {
+        var sandbox = CreateSandbox();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => sandbox.ReadWorkspaceFileAsync("chat-1", "../outside.txt"));
+        using var content = new MemoryStream([1]);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            sandbox.WriteWorkspaceFileAsync("chat-1", "/etc/passwd", content)
+        );
+    }
+
+    [Fact]
     public void ReportsStandardIsolationLevel() => Assert.Equal(SandboxLevel.Standard, CreateSandbox().Level);
 
     [Fact]

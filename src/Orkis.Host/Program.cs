@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAI;
 using Orkis.Agents;
+using Orkis.Artifacts;
 using Orkis.Host;
 using Orkis.Runs;
 using Orkis.Sandboxing;
@@ -39,6 +40,30 @@ IApprovalInbox CreateApprovalInbox() =>
     new FileApprovalInbox(
         Microsoft.Extensions.Options.Options.Create(new FileApprovalInboxOptions { RootPath = approvalsDir })
     );
+
+var artifactsDir =
+    Environment.GetEnvironmentVariable("ORKIS_ARTIFACT_DIR")
+    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "orkis", "artifacts");
+
+if (argList.Contains("--artifacts"))
+{
+    var store = new FileArtifactStore(
+        Microsoft.Extensions.Options.Options.Create(new FileArtifactStoreOptions { RootPath = artifactsDir })
+    );
+    var artifacts = await store.ListAsync();
+    if (artifacts.Count == 0)
+    {
+        Console.WriteLine("no artifacts");
+        return 0;
+    }
+
+    foreach (var artifact in artifacts)
+    {
+        Console.WriteLine($"{artifact.CreatedAt:u}  {artifact.Length,10}  {artifact.Name}");
+    }
+
+    return 0;
+}
 
 if (argList.Contains("--approvals"))
 {
@@ -225,6 +250,16 @@ foreach (var tool in DemoTools.CreateOrkisTools())
 // between sandbox types — that is what artifact promotion (roadmap) is for.
 var workspace = Environment.GetEnvironmentVariable("ORKIS_WORKSPACE") ?? "default";
 services.AddSingleton<ITool>(sp => new ConsoleLoggingTool(new ShellTool(sp.GetServices<ISandbox>(), workspace)));
+
+// Artifacts: the only path files take across isolation levels. Promotion and staging
+// are ordinary tools, so every crossing is a supervisable, auditable decision.
+services.AddOrkisFileArtifactStore(options => options.RootPath = artifactsDir);
+services.AddSingleton<ITool>(sp => new ConsoleLoggingTool(
+    new PromoteArtifactTool(sp.GetServices<ISandbox>(), sp.GetRequiredService<IArtifactStore>(), workspace)
+));
+services.AddSingleton<ITool>(sp => new ConsoleLoggingTool(
+    new StageArtifactTool(sp.GetServices<ISandbox>(), sp.GetRequiredService<IArtifactStore>(), workspace)
+));
 
 IChatClient providerClient = offline
     ? new OfflineChatClient()

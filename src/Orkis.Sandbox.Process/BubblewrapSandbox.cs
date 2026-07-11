@@ -14,7 +14,7 @@ namespace Orkis.Sandboxing;
 /// requires the bubblewrap binary and a kernel allowing unprivileged user
 /// namespaces (probe with <see cref="IsSupportedAsync"/>).
 /// </remarks>
-public sealed class BubblewrapSandbox : ISandbox
+public sealed class BubblewrapSandbox : ISandbox, IWorkspaceFileAccess
 {
     private const string InnerWorkPath = "/work";
 
@@ -31,6 +31,21 @@ public sealed class BubblewrapSandbox : ISandbox
 
     /// <inheritdoc />
     public SandboxLevel Level => SandboxLevel.Strict;
+
+    /// <inheritdoc />
+    public Task<Stream?> ReadWorkspaceFileAsync(
+        string workspaceKey,
+        string relativePath,
+        CancellationToken cancellationToken = default
+    ) => SandboxScratch.OpenWorkspaceFileAsync(_options.WorkingRoot, workspaceKey, relativePath);
+
+    /// <inheritdoc />
+    public Task WriteWorkspaceFileAsync(
+        string workspaceKey,
+        string relativePath,
+        Stream content,
+        CancellationToken cancellationToken = default
+    ) => SandboxScratch.WriteWorkspaceFileAsync(_options.WorkingRoot, workspaceKey, relativePath, content, cancellationToken);
 
     /// <inheritdoc />
     public async Task<SandboxExecutionResult> ExecuteAsync(

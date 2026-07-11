@@ -139,6 +139,49 @@ internal static class SandboxScratch
         return resolved;
     }
 
+    /// <summary>
+    /// Resolves a file path inside a workload's persistent workspace, rejecting escapes.
+    /// </summary>
+    public static string ResolveWorkspaceFile(string workingRoot, string workspaceKey, string relativePath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(workspaceKey);
+        ArgumentException.ThrowIfNullOrEmpty(relativePath);
+
+        return Resolve(Path.Combine(workingRoot, "workspaces", SafePathNames.For(workspaceKey)), relativePath);
+    }
+
+    /// <summary>Opens a workspace file for reading, or null when it does not exist.</summary>
+    public static Task<Stream?> OpenWorkspaceFileAsync(string workingRoot, string workspaceKey, string relativePath)
+    {
+        var path = ResolveWorkspaceFile(workingRoot, workspaceKey, relativePath);
+        return Task.FromResult<Stream?>(
+            File.Exists(path)
+                ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous)
+                : null
+        );
+    }
+
+    /// <summary>Writes a workspace file, creating parent directories and replacing any existing file.</summary>
+    public static async Task WriteWorkspaceFileAsync(
+        string workingRoot,
+        string workspaceKey,
+        string relativePath,
+        Stream content,
+        CancellationToken cancellationToken
+    )
+    {
+        ArgumentNullException.ThrowIfNull(content);
+
+        var path = ResolveWorkspaceFile(workingRoot, workspaceKey, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+        var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous);
+        await using (stream.ConfigureAwait(false))
+        {
+            await content.CopyToAsync(stream, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     public static void TryDelete(string path)
     {
         try

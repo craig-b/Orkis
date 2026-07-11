@@ -16,6 +16,14 @@ public sealed class FirecrackerSandboxOptions
     public string DebugfsPath { get; set; } = "debugfs";
 
     /// <summary>
+    /// Path to the e2fsck binary (e2fsprogs). A guest that halts without a clean
+    /// unmount leaves the workspace image's journal dirty; e2fsck replays it before
+    /// any debugfs access, since debugfs reads (and writes) stale metadata otherwise
+    /// and the kernel's own replay at next mount would clobber debugfs's changes.
+    /// </summary>
+    public string E2fsckPath { get; set; } = "e2fsck";
+
+    /// <summary>
     /// Path to the uncompressed guest kernel (vmlinux). Required.
     /// scripts/setup-firecracker.sh downloads a suitable one.
     /// </summary>

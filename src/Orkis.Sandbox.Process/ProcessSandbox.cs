@@ -14,7 +14,7 @@ namespace Orkis.Sandboxing;
 /// host process's OS privileges. Use <see cref="BubblewrapSandbox"/> or another
 /// <see cref="SandboxLevel.Strict"/> sandbox for untrusted code.
 /// </remarks>
-public sealed class ProcessSandbox : ISandbox
+public sealed class ProcessSandbox : ISandbox, IWorkspaceFileAccess
 {
     private readonly ProcessSandboxOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -29,6 +29,21 @@ public sealed class ProcessSandbox : ISandbox
 
     /// <inheritdoc />
     public SandboxLevel Level => SandboxLevel.Standard;
+
+    /// <inheritdoc />
+    public Task<Stream?> ReadWorkspaceFileAsync(
+        string workspaceKey,
+        string relativePath,
+        CancellationToken cancellationToken = default
+    ) => SandboxScratch.OpenWorkspaceFileAsync(_options.WorkingRoot, workspaceKey, relativePath);
+
+    /// <inheritdoc />
+    public Task WriteWorkspaceFileAsync(
+        string workspaceKey,
+        string relativePath,
+        Stream content,
+        CancellationToken cancellationToken = default
+    ) => SandboxScratch.WriteWorkspaceFileAsync(_options.WorkingRoot, workspaceKey, relativePath, content, cancellationToken);
 
     /// <inheritdoc />
     public async Task<SandboxExecutionResult> ExecuteAsync(

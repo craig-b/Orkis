@@ -82,6 +82,11 @@ cat /tmp/orkis-out
 echo "===ORKIS:STDERR==="
 cat /tmp/orkis-err
 echo "===ORKIS:EXIT:$code==="
+# Unmount /work cleanly so a persistent workspace image's journal is left clean;
+# the host falls back to e2fsck replay if this is ever skipped (crash, timeout).
+cd /
+sync
+umount /work 2> /dev/null
 # reboot -f (not poweroff): Firecracker has no ACPI; the reboot syscall with
 # reboot=k boot args produces the KVM shutdown exit that terminates the VMM.
 reboot -f
