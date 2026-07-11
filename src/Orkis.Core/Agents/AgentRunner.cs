@@ -64,6 +64,14 @@ public sealed class AgentRunner
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        if (request.Budget.MaxCost is not null && _costCalculator is NullCostCalculator)
+        {
+            throw new InvalidOperationException(
+                "The run sets Budget.MaxCost, but no pricing is configured, so the budget can "
+                    + "never trigger. Register pricing with AddOrkisPricing, or remove MaxCost."
+            );
+        }
+
         var state = new AgentRunState
         {
             RunId = request.RunId,

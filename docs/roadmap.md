@@ -122,8 +122,3 @@ The through-lines these ideas are meant to respect:
   backend, so no interface may assume in-memory or single-process state. Note: compose
   here is packaging/deployment only — sandboxing stays bubblewrap/Firecracker, and a
   containerised daemon needs `/dev/kvm` passthrough for the Firecracker path.
-
-## Polish
-
-- **`MaxCost` with no pricing** `[idea]` — warn or fail fast at startup when a run sets
-  `MaxCost` while the null cost calculator is active, since the budget can never trigger.
