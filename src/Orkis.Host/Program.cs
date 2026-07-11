@@ -35,7 +35,8 @@ if (!offline && string.IsNullOrEmpty(selectedKey))
     return 1;
 }
 
-var model = Environment.GetEnvironmentVariable("ORKIS_MODEL") ?? (provider == "openai" ? "gpt-5" : "claude-sonnet-5");
+var model =
+    Environment.GetEnvironmentVariable("ORKIS_MODEL") ?? (provider == "openai" ? "gpt-5-mini" : "claude-sonnet-5");
 
 var services = new ServiceCollection();
 services.AddOrkis();
@@ -48,7 +49,7 @@ services.AddOrkisPricing(cost =>
     ModelPrice price;
     if (provider == "openai")
     {
-        price = new ModelPrice { InputPerMillionTokens = 1.25m, OutputPerMillionTokens = 10m };
+        price = new ModelPrice { InputPerMillionTokens = 0.25m, OutputPerMillionTokens = 2m };
     }
     else
     {
