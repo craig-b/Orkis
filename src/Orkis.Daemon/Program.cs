@@ -98,6 +98,7 @@ var settings = new DaemonSettings
     EventDirectory = Environment.GetEnvironmentVariable("ORKIS_EVENT_DIR") ?? Path.Combine(dataRoot, "events"),
     ApprovalDirectory = Environment.GetEnvironmentVariable("ORKIS_APPROVAL_DIR") ?? Path.Combine(dataRoot, "approvals"),
     ArtifactDirectory = Environment.GetEnvironmentVariable("ORKIS_ARTIFACT_DIR") ?? Path.Combine(dataRoot, "artifacts"),
+    ScheduleDirectory = Environment.GetEnvironmentVariable("ORKIS_SCHEDULE_DIR") ?? Path.Combine(dataRoot, "schedules"),
     WorkspaceKey = Environment.GetEnvironmentVariable("ORKIS_WORKSPACE") ?? "default",
     Offline = offline,
     Provider = provider,

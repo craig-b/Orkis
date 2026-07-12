@@ -217,6 +217,7 @@ public static class DaemonApplication
             : settings.ScheduleDirectory;
         services.AddOrkisFileScheduleStore(options => options.RootPath = scheduleDirectory);
         services.AddHostedService<ScheduleRunner>();
+        services.AddHostedService<ScheduleHandoffService>();
 
         configureServices?.Invoke(services);
 

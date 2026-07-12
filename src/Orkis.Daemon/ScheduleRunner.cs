@@ -157,32 +157,19 @@ internal sealed partial class ScheduleRunner : BackgroundService
             .SaveAsync(schedule with { LastFiredAt = now, LastRunId = request.RunId }, cancellationToken)
             .ConfigureAwait(false);
 
-        // Run to completion so the closing note can seed the next firing's handoff.
-        // Fired runs are independent of the daemon's request lifetime.
-        _ = RunToCompletionAsync(schedule.Id, scope, request, schedule.Continuity);
+        // Fire and forget: the run is independent of the daemon's request lifetime,
+        // and its handoff (if any) is captured from its completion event by
+        // ScheduleHandoffService — so a firing that parks for approval and resumes
+        // later still contributes its note.
+        _ = RunAsync(schedule.Id, scope, request);
     }
 
-    private async Task RunToCompletionAsync(
-        string scheduleId,
-        string workspaceKey,
-        AgentRunRequest request,
-        ScheduleContinuity continuity
-    )
+    private async Task RunAsync(string scheduleId, string workspaceKey, AgentRunRequest request)
     {
         try
         {
             var runner = _runners.CreateForScope(workspaceKey, request.MemoryScope);
-            var result = await runner.StartAsync(request, CancellationToken.None).ConfigureAwait(false);
-
-            if (continuity == ScheduleContinuity.SharedStorageWithHandoff && result.Status == RunStatus.Completed)
-            {
-                // Re-read the schedule so a concurrent edit is not clobbered.
-                var current = await _schedules.GetAsync(scheduleId).ConfigureAwait(false);
-                if (current is not null)
-                {
-                    await _schedules.SaveAsync(current with { Handoff = result.FinalText }).ConfigureAwait(false);
-                }
-            }
+            await runner.StartAsync(request, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

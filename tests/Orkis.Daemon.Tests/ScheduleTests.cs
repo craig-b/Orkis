@@ -102,4 +102,44 @@ public sealed class ScheduleTests(DaemonFixture fixture) : IClassFixture<DaemonF
             await _client.DeleteScheduleAsync(schedule.Id);
         }
     }
+
+    [Fact]
+    public async Task HandoffContinuityCapturesTheFiringsClosingNote()
+    {
+        var store = (Orkis.Scheduling.IScheduleStore)
+            fixture.Services.GetService(typeof(Orkis.Scheduling.IScheduleStore))!;
+
+        var schedule = await _client.CreateScheduleAsync(
+            new CreateScheduleRequest
+            {
+                Name = "handoff",
+                Cron = "* * * * * *",
+                Prompt = "Run the greeting command.",
+                SupervisorKey = "yolo",
+                Continuity = "sharedStorageWithHandoff",
+            }
+        );
+        try
+        {
+            // Captured from the run's completion event, not the firing call — so this
+            // works whether the run ran straight through or parked and resumed.
+            var stopAt = DateTime.UtcNow + TimeSpan.FromSeconds(40);
+            string? handoff = null;
+            while (DateTime.UtcNow < stopAt && string.IsNullOrEmpty(handoff))
+            {
+                handoff = (await store.GetAsync(schedule.Id))?.Handoff;
+                if (string.IsNullOrEmpty(handoff))
+                {
+                    await Task.Delay(500);
+                }
+            }
+
+            Assert.False(string.IsNullOrEmpty(handoff));
+            Assert.Contains("greeting command", handoff);
+        }
+        finally
+        {
+            await _client.DeleteScheduleAsync(schedule.Id);
+        }
+    }
 }
