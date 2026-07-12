@@ -1,7 +1,9 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Orkis.Agents;
+using Orkis.Core.Tools;
 using Orkis.Runs;
 using Orkis.Supervision;
+using Orkis.Tools;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -25,6 +27,25 @@ public static class OrkisServiceCollectionExtensions
         services.TryAddSingleton<ISupervisorResolver, KeyedServiceSupervisorResolver>();
         services.TryAddSingleton<ICostCalculator>(NullCostCalculator.Instance);
         services.TryAddSingleton<AgentRunner>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers an in-memory tool catalogue for progressive disclosure: the supplied
+    /// tools are not declared to the model up front — the runner exposes a
+    /// <c>search_tools</c> meta-tool instead, and matches become active per run,
+    /// recorded in run state. Catalogue tools are deliberately separate from the
+    /// always-on <see cref="ITool"/> registrations.
+    /// </summary>
+    public static IServiceCollection AddOrkisToolCatalog(
+        this IServiceCollection services,
+        Func<IServiceProvider, IEnumerable<ITool>> tools
+    )
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(tools);
+
+        services.TryAddSingleton<IToolCatalog>(provider => new InMemoryToolCatalog(tools(provider)));
         return services;
     }
 

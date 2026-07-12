@@ -48,11 +48,6 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 2 — Medium-term (design mostly clear, larger or dependent)
 
-- **Tool catalogue / tool search (progressive disclosure)** `[idea]` — `IToolCatalog`
-  (search + resolve), a `search_tools` meta-tool, a stub tier, and active tool ids in run
-  state. Scales tool sets past what fits in context without churning the prompt prefix.
-- **Per-run tool scoping / dynamic tool sets** `[idea]` — the tool set is currently fixed
-  at runner construction. Per-run scoping is a prerequisite for both the catalogue and MCP.
 - **AI supervisor** `[idea]` — an LLM-based approval policy behind `ISupervisor`,
   composable with escalation (e.g. AI approves low-risk, escalates the rest).
 - **Agent-written memory: implementation + loop wiring** `[abstraction]` — `IMemoryStore`
@@ -64,8 +59,9 @@ The through-lines these ideas are meant to respect:
   retrieval; in-memory is the only one today. Incremental, one backend at a time.
 - **Retrieval wired into the agent loop** `[idea]` — expose retrieval as a tool or a
   context source; depends on the context-management design.
-- **MCP client** `[idea]` — consume Model Context Protocol servers as Orkis tools;
-  couples with per-run tool scoping.
+- **MCP client** `[idea]` — consume Model Context Protocol servers as Orkis tools; its
+  prerequisites (per-run tool scoping, `IToolCatalog`) are built, and MCP tools slot in
+  as either always-on tools or catalogue entries.
 - **Resilience** `[idea]` — retry/backoff/rate-limit handling for model and tool calls.
 - **Execution floor** `[idea]` — a global minimum sandbox level ("everything runs in
   Firecracker"). Distinct from workspace flow policy: this governs where *code* runs, not

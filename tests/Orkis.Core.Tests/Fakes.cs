@@ -31,6 +31,9 @@ internal sealed class FakeChatClient : IChatClient
 
     public List<List<ChatMessage>> Requests { get; } = [];
 
+    /// <summary>The options each request carried, so tests can assert declared tools.</summary>
+    public List<ChatOptions?> RequestOptions { get; } = [];
+
     public void Enqueue(ChatResponse response) => _responses.Enqueue(response);
 
     public Task<ChatResponse> GetResponseAsync(
@@ -40,6 +43,7 @@ internal sealed class FakeChatClient : IChatClient
     )
     {
         Requests.Add([.. messages]);
+        RequestOptions.Add(options);
         return Task.FromResult(_responses.Dequeue());
     }
 

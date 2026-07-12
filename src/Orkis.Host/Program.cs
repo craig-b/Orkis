@@ -240,9 +240,18 @@ services.AddOrkisPricing(cost =>
     cost.Models[model] = price;
 });
 
+// Progressive disclosure demo: get_utc_now stays always-on; roll_dice lives only in
+// the catalogue, so the model must search_tools before it can roll.
 foreach (var tool in DemoTools.CreateOrkisTools())
 {
-    services.AddSingleton<ITool>(new ConsoleLoggingTool(tool));
+    if (tool.Descriptor.Name == "roll_dice")
+    {
+        services.AddOrkisToolCatalog(_ => [new ConsoleLoggingTool(tool)]);
+    }
+    else
+    {
+        services.AddSingleton<ITool>(new ConsoleLoggingTool(tool));
+    }
 }
 
 // Shell commands share one persistent workspace per sandbox type: files written by

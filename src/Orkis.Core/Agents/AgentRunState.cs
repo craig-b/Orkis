@@ -25,6 +25,18 @@ internal sealed class AgentRunState
     /// <summary>Tool calls requested by the model that have not yet been resolved.</summary>
     public List<ToolCall> PendingToolCalls { get; init; } = [];
 
+    /// <summary>
+    /// Names restricting the always-on tools for this run; empty means all registered
+    /// tools are available.
+    /// </summary>
+    public List<string> CoreToolNames { get; init; } = [];
+
+    /// <summary>
+    /// Catalogue tools activated so far by <c>search_tools</c>. Re-resolved through the
+    /// catalogue each segment, so activation survives checkpoint and resume.
+    /// </summary>
+    public List<string> ActiveToolNames { get; init; } = [];
+
     public long InputTokens { get; set; }
 
     public long OutputTokens { get; set; }

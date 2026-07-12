@@ -19,6 +19,13 @@ public sealed record AgentRunRequest
     public RunBudget Budget { get; init; } = RunBudget.Unlimited;
 
     /// <summary>
+    /// Restricts which registered always-on tools this run may use, or
+    /// <see langword="null"/> for all of them. Names that match no registered tool
+    /// fail fast when the run starts.
+    /// </summary>
+    public IReadOnlyList<string>? ToolNames { get; init; }
+
+    /// <summary>
     /// Key of the supervisor governing this run. Checkpointed with the run's state, so a
     /// resumed run reconnects to the same supervision policy.
     /// </summary>

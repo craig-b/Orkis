@@ -19,15 +19,33 @@ namespace Orkis.Agents;
 /// </summary>
 public sealed class AgentRunner
 {
+    private const string SearchToolsName = "search_tools";
+
     private static readonly JsonSerializerOptions StateJsonOptions = CreateStateJsonOptions();
+
+    private static readonly ToolDescriptor SearchToolsDescriptor = new()
+    {
+        Name = SearchToolsName,
+        Description =
+            "Searches the tool catalogue for additional tools matching a query. "
+            + "Matching tools become available for the rest of the run.",
+        ParametersSchema = JsonDocument
+            .Parse(
+                """
+                {"type":"object","properties":{"query":{"type":"string","description":"What kind of tool is needed."}},"required":["query"]}
+                """
+            )
+            .RootElement,
+        Risk = ToolRisk.ReadOnly,
+    };
 
     private readonly IChatClient _chatClient;
     private readonly ISupervisorResolver _supervisorResolver;
     private readonly ICheckpointStore _checkpointStore;
     private readonly TimeProvider _timeProvider;
     private readonly ICostCalculator _costCalculator;
+    private readonly IToolCatalog? _toolCatalog;
     private readonly FrozenDictionary<string, ITool> _tools;
-    private readonly ChatOptions? _chatOptions;
 
     public AgentRunner(
         IChatClient chatClient,
@@ -35,7 +53,8 @@ public sealed class AgentRunner
         ISupervisorResolver supervisorResolver,
         ICheckpointStore checkpointStore,
         TimeProvider timeProvider,
-        ICostCalculator? costCalculator = null
+        ICostCalculator? costCalculator = null,
+        IToolCatalog? toolCatalog = null
     )
     {
         ArgumentNullException.ThrowIfNull(chatClient);
@@ -49,14 +68,8 @@ public sealed class AgentRunner
         _checkpointStore = checkpointStore;
         _timeProvider = timeProvider;
         _costCalculator = costCalculator ?? NullCostCalculator.Instance;
+        _toolCatalog = toolCatalog;
         _tools = tools.ToFrozenDictionary(t => t.Descriptor.Name);
-        _chatOptions =
-            _tools.Count == 0
-                ? null
-                : new ChatOptions
-                {
-                    Tools = [.. _tools.Values.Select(AITool (t) => new ToolDeclaration(t.Descriptor))],
-                };
     }
 
     /// <summary>Starts a new run and executes it until it completes or pauses.</summary>
@@ -72,11 +85,24 @@ public sealed class AgentRunner
             );
         }
 
+        if (request.ToolNames is { } toolNames)
+        {
+            var unknown = toolNames.Where(name => !_tools.ContainsKey(name)).ToList();
+            if (unknown.Count > 0)
+            {
+                throw new ArgumentException(
+                    $"The run requests unregistered tools: {string.Join(", ", unknown)}.",
+                    nameof(request)
+                );
+            }
+        }
+
         var state = new AgentRunState
         {
             RunId = request.RunId,
             Budget = request.Budget,
             SupervisorKey = request.SupervisorKey,
+            CoreToolNames = [.. request.ToolNames ?? []],
         };
         if (request.SystemPrompt is not null)
         {
@@ -164,7 +190,8 @@ public sealed class AgentRunner
                 }
 
                 var toolCall = state.PendingToolCalls[0];
-                var result = await ResolveToolCallAsync(state, supervisor, toolCall, cancellationToken)
+                var runTools = await BuildRunToolsAsync(state, cancellationToken).ConfigureAwait(false);
+                var result = await ResolveToolCallAsync(state, supervisor, runTools, toolCall, cancellationToken)
                     .ConfigureAwait(false);
                 if (result is null)
                 {
@@ -186,8 +213,9 @@ public sealed class AgentRunner
                     .ConfigureAwait(false);
             }
 
+            var declaredTools = await BuildRunToolsAsync(state, cancellationToken).ConfigureAwait(false);
             var response = await _chatClient
-                .GetResponseAsync(state.Messages, _chatOptions, cancellationToken)
+                .GetResponseAsync(state.Messages, BuildChatOptions(declaredTools), cancellationToken)
                 .ConfigureAwait(false);
 
             foreach (var message in response.Messages)
@@ -268,17 +296,50 @@ public sealed class AgentRunner
     private async Task<ToolResult?> ResolveToolCallAsync(
         AgentRunState state,
         ISupervisor supervisor,
+        Dictionary<string, ITool> runTools,
         ToolCall toolCall,
         CancellationToken cancellationToken
     )
     {
-        if (!_tools.TryGetValue(toolCall.ToolName, out var tool))
+        if (_toolCatalog is not null && toolCall.ToolName == SearchToolsName)
+        {
+            var searchDecision = await ReviewAsync(
+                    state,
+                    supervisor,
+                    toolCall,
+                    SearchToolsDescriptor,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+            if (searchDecision.Verdict == SupervisionVerdict.Pending)
+            {
+                return null;
+            }
+
+            if (searchDecision.Verdict == SupervisionVerdict.Denied)
+            {
+                RecordToolCall(SearchToolsName, "denied");
+                return Error(
+                    toolCall,
+                    $"Tool call denied by supervisor: {searchDecision.Reason ?? "no reason given"}"
+                );
+            }
+
+            state.ToolCallCount++;
+            var searchResult = await ExecuteSearchAsync(state, runTools, toolCall, cancellationToken)
+                .ConfigureAwait(false);
+            RecordToolCall(SearchToolsName, searchResult.IsError ? "error" : "executed");
+            return searchResult;
+        }
+
+        if (!runTools.TryGetValue(toolCall.ToolName, out var tool))
         {
             RecordToolCall(toolCall.ToolName, "unknown_tool");
             return Error(toolCall, $"Unknown tool '{toolCall.ToolName}'.");
         }
 
-        var decision = await ReviewAsync(state, supervisor, toolCall, tool, cancellationToken).ConfigureAwait(false);
+        var decision = await ReviewAsync(state, supervisor, toolCall, tool.Descriptor, cancellationToken)
+            .ConfigureAwait(false);
 
         if (decision.Verdict == SupervisionVerdict.Pending)
         {
@@ -321,24 +382,115 @@ public sealed class AgentRunner
         return result;
     }
 
+    /// <summary>
+    /// The tools available to the run right now: the always-on core (restricted by the
+    /// run's <see cref="AgentRunState.CoreToolNames"/> when set) plus catalogue tools
+    /// the run has activated. Activated tools re-resolve through the catalogue every
+    /// time, so one that has vanished simply drops out — a typed outcome, not a crash.
+    /// </summary>
+    private async Task<Dictionary<string, ITool>> BuildRunToolsAsync(
+        AgentRunState state,
+        CancellationToken cancellationToken
+    )
+    {
+        var tools = new Dictionary<string, ITool>(StringComparer.Ordinal);
+        foreach (var (name, tool) in _tools)
+        {
+            if (state.CoreToolNames.Count == 0 || state.CoreToolNames.Contains(name))
+            {
+                tools[name] = tool;
+            }
+        }
+
+        if (_toolCatalog is not null)
+        {
+            foreach (var name in state.ActiveToolNames)
+            {
+                if (await _toolCatalog.ResolveAsync(name, cancellationToken).ConfigureAwait(false) is { } resolved)
+                {
+                    tools.TryAdd(name, resolved);
+                }
+            }
+        }
+
+        return tools;
+    }
+
+    private ChatOptions? BuildChatOptions(Dictionary<string, ITool> runTools)
+    {
+        if (runTools.Count == 0 && _toolCatalog is null)
+        {
+            return null;
+        }
+
+        var declarations = new List<AITool>(runTools.Count + 1);
+        declarations.AddRange(runTools.Values.Select(AITool (t) => new ToolDeclaration(t.Descriptor)));
+        if (_toolCatalog is not null)
+        {
+            declarations.Add(new ToolDeclaration(SearchToolsDescriptor));
+        }
+
+        return new ChatOptions { Tools = declarations };
+    }
+
+    private async Task<ToolResult> ExecuteSearchAsync(
+        AgentRunState state,
+        Dictionary<string, ITool> runTools,
+        ToolCall toolCall,
+        CancellationToken cancellationToken
+    )
+    {
+        var query = toolCall.Arguments.TryGetProperty("query", out var property) ? property.GetString() : null;
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Error(toolCall, "Missing required argument 'query'.");
+        }
+
+        var matches = await _toolCatalog!.SearchAsync(query, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        // Tools already available (core or previously activated) are not re-announced.
+        var activated = new List<ToolDescriptor>();
+        foreach (var descriptor in matches)
+        {
+            if (runTools.ContainsKey(descriptor.Name) || state.ActiveToolNames.Contains(descriptor.Name))
+            {
+                continue;
+            }
+
+            state.ActiveToolNames.Add(descriptor.Name);
+            activated.Add(descriptor);
+        }
+
+        var content = activated.Count switch
+        {
+            0 when matches.Count == 0 =>
+                $"No tools matched '{query}'. Try different terms, or proceed with the tools you have.",
+            0 => "All matching tools are already available to you.",
+            _ => "These tools are now available:\n"
+                + string.Join("\n", activated.Select(static d => $"- {d.Name}: {d.Description}")),
+        };
+        return new ToolResult { ToolCallId = toolCall.Id, Content = content };
+    }
+
     private static async Task<SupervisionDecision> ReviewAsync(
         AgentRunState state,
         ISupervisor supervisor,
         ToolCall toolCall,
-        ITool tool,
+        ToolDescriptor descriptor,
         CancellationToken cancellationToken
     )
     {
         using var activity = OrkisInstrumentation.ActivitySource.StartActivity(OrkisTelemetry.SupervisionActivityName);
         activity?.SetTag("gen_ai.tool.name", toolCall.ToolName);
         activity?.SetTag("orkis.supervisor.key", state.SupervisorKey);
-        activity?.SetTag("orkis.tool.risk", tool.Descriptor.Risk.ToString());
+        activity?.SetTag("orkis.tool.risk", descriptor.Risk.ToString());
 
         var action = new ProposedAction
         {
             RunId = state.RunId,
             Call = toolCall,
-            Tool = tool.Descriptor,
+            Tool = descriptor,
         };
         var decision = await supervisor.ReviewAsync(action, cancellationToken).ConfigureAwait(false);
 
