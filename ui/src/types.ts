@@ -74,6 +74,17 @@ export interface CreateScheduleRequest {
   continuity?: string;
 }
 
+export interface McpServerResponse {
+  name: string;
+  server: string;
+  tools: string[];
+}
+
+export interface AddMcpServerRequest {
+  server: string;
+  name?: string;
+}
+
 // Run events arrive with a $type discriminator; unknown types must not break the
 // stream (same forward-compat rule as the .NET client).
 export interface RunEvent {

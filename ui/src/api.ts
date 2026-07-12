@@ -2,10 +2,12 @@
 // "log in", handled by exchanging the token for a cookie session at /auth/session.
 
 import type {
+  AddMcpServerRequest,
   ApprovalResponse,
   ArtifactInfo,
   CapabilitiesResponse,
   CreateScheduleRequest,
+  McpServerResponse,
   RunResponse,
   ScheduleResponse,
   TranscriptMessage,
@@ -74,6 +76,10 @@ export const api = {
   createSchedule: (body: CreateScheduleRequest) => request<ScheduleResponse>("/v1/schedules", json(body)),
   deleteSchedule: (id: string) =>
     request<void>(`/v1/schedules/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  mcpServers: () => request<McpServerResponse[]>("/v1/mcp-servers"),
+  addMcpServer: (body: AddMcpServerRequest) => request<McpServerResponse>("/v1/mcp-servers", json(body)),
+  removeMcpServer: (name: string) =>
+    request<void>(`/v1/mcp-servers/${encodeURIComponent(name)}`, { method: "DELETE" }),
 };
 
 /** Same-origin download URL for an artifact (the session cookie authenticates it). */

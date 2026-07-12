@@ -138,11 +138,15 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   reconnects — models are this (built: keyed `IChatClient` registrations with
   `AgentRunRequest.ModelKey`), and it enables reviewer ≠ actor model splits. (2)
   *Runtime-mutable daemon objects*, dockerd-style API resources rather than config
-  reloads — MCP servers are the clear case (`POST/DELETE /v1/mcp-servers`, a mutable
-  tool catalogue; active tools are already name-referenced and re-resolved per segment,
-  so detachment degrades to a typed "tool no longer exists"). Caveat recorded now:
-  attaching a stdio MCP server is arbitrary command execution on the host, so runtime
-  mutation is a privileged, audited operation from day one — config changes are events.
+  reloads — MCP servers are built as the first case: `GET/POST/DELETE /v1/mcp-servers`
+  over an `McpServerRegistry` backed by a `MutableToolCatalog`, so a server connects or
+  disconnects on a live daemon and its tools join or leave the catalogue (active tools
+  are name-referenced and re-resolved per segment, so detachment degrades to a typed
+  "tool no longer exists"). Boot servers seed the registry; the CLI (`orkis mcp
+  list/add/rm`) and web UI drive it. Caveat recorded now: attaching a stdio MCP server
+  is arbitrary command execution on the host, so runtime mutation is a privileged
+  operation — it currently rides the same loopback/token trust as every other endpoint;
+  a dedicated audit trail and per-operation authz is still owed. Config changes are events.
   Mutated objects that should survive restart live in daemon *state* (adopted on boot,
   like runs), never in the config file. (3) *Boot-only config* (sandbox plumbing,
   socket, data roots, auth): restart is the honest lifecycle; a daemon config file
@@ -156,8 +160,10 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   OpenRouter or a local server) and `models` (a per-run key → provider + model id),
   plus the default model and the embedding model; secrets inline or via
   `apiKeyEnv`. Legacy env vars remain a fallback. Remaining: migrate the other
-  boot-only config (dirs, sandbox, socket, gateway) into the same file incrementally,
-  and the runtime-object APIs (`POST/DELETE /v1/mcp-servers`).
+  boot-only config (dirs, sandbox, socket, mcp, corpus) folded into the same file, and
+  the gateway reads its own `web` section from it too. Runtime MCP management
+  (`GET/POST/DELETE /v1/mcp-servers`) is built. Remaining: gateway config beyond the
+  `web` section (none needed yet), and audit/authz for the privileged runtime mutations.
 - **Daemon clients + protocol growth** `[scaffold]` — the daemon itself is built
   (`Orkis.Daemon`, July 2026): a long-lived composition root owning the stateful side —
   run registry with checkpoint adoption on restart (`RunRegistry` over
