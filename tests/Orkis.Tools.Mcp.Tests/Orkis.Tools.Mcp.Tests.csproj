@@ -20,5 +20,6 @@
 
   <ItemGroup>
     <Content Include="fixtures/test-mcp-server.py" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="fixtures/test-mcp-http-server.py" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

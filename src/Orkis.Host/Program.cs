@@ -285,22 +285,39 @@ foreach (var tool in DemoTools.CreateOrkisTools())
 }
 
 // MCP servers contribute tools through the catalogue, so large servers cost no
-// context until the model searches for them. ORKIS_MCP_SERVER="command arg1 arg2".
+// context until the model searches for them. ORKIS_MCP_SERVER is either a command
+// line ("npx -y some-server") or an http(s) endpoint for a remote server.
 // Annotations are not trusted: every MCP tool is Mutating and passes supervision.
-if (Environment.GetEnvironmentVariable("ORKIS_MCP_SERVER") is { Length: > 0 } mcpCommandLine)
+if (Environment.GetEnvironmentVariable("ORKIS_MCP_SERVER") is { Length: > 0 } mcpServer)
 {
-    var mcpParts = mcpCommandLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-    var mcpOptions = new McpStdioServerOptions { Command = mcpParts[0], Name = Path.GetFileName(mcpParts[0]) };
-    foreach (var argument in mcpParts.Skip(1))
+    McpToolSet mcpToolSet;
+    string mcpName;
+    if (
+        mcpServer.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+        || mcpServer.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+    )
     {
-        mcpOptions.Arguments.Add(argument);
+        var endpoint = new Uri(mcpServer);
+        mcpName = endpoint.Host;
+        mcpToolSet = await McpToolSet.ConnectAsync(new McpHttpServerOptions { Endpoint = endpoint, Name = mcpName });
+    }
+    else
+    {
+        var mcpParts = mcpServer.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        mcpName = Path.GetFileName(mcpParts[0]);
+        var mcpOptions = new McpStdioServerOptions { Command = mcpParts[0], Name = mcpName };
+        foreach (var argument in mcpParts.Skip(1))
+        {
+            mcpOptions.Arguments.Add(argument);
+        }
+
+        mcpToolSet = await McpToolSet.ConnectAsync(mcpOptions);
     }
 
-    var mcpToolSet = await McpToolSet.ConnectAsync(mcpOptions);
     services.AddSingleton(mcpToolSet); // Provider disposal shuts the server down.
     catalogTools.AddRange(mcpToolSet.Tools.Select(ITool (tool) => new ConsoleLoggingTool(tool)));
     Console.WriteLine(
-        $"mcp: {mcpOptions.Name} contributes {mcpToolSet.Tools.Count} tool(s) to the catalogue: "
+        $"mcp: {mcpName} contributes {mcpToolSet.Tools.Count} tool(s) to the catalogue: "
             + string.Join(", ", mcpToolSet.Tools.Select(t => t.Descriptor.Name))
     );
 }

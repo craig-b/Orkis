@@ -22,7 +22,7 @@ public sealed class McpToolSet : IAsyncDisposable
     public IReadOnlyList<ITool> Tools { get; }
 
     /// <summary>Launches the server over stdio and lists its tools.</summary>
-    public static async Task<McpToolSet> ConnectAsync(
+    public static Task<McpToolSet> ConnectAsync(
         McpStdioServerOptions options,
         CancellationToken cancellationToken = default
     )
@@ -38,7 +38,34 @@ public sealed class McpToolSet : IAsyncDisposable
                 Name = options.Name,
             }
         );
+        return ConnectAsync(transport, options, cancellationToken);
+    }
 
+    /// <summary>Connects to a remote server over Streamable HTTP and lists its tools.</summary>
+    public static Task<McpToolSet> ConnectAsync(
+        McpHttpServerOptions options,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var transport = new HttpClientTransport(
+            new HttpClientTransportOptions
+            {
+                Endpoint = options.Endpoint,
+                AdditionalHeaders = new Dictionary<string, string>(options.Headers),
+                Name = options.Name,
+            }
+        );
+        return ConnectAsync(transport, options, cancellationToken);
+    }
+
+    private static async Task<McpToolSet> ConnectAsync(
+        IClientTransport transport,
+        McpServerOptionsBase options,
+        CancellationToken cancellationToken
+    )
+    {
         var client = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken).ConfigureAwait(false);
         try
         {
