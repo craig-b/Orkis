@@ -46,11 +46,6 @@ The through-lines these ideas are meant to respect:
   invocations to `ITool`, registered always-on or as `IToolCatalog` entries — the
   natural home for large MCP servers. stdio transport first. Prerequisites (per-run
   scoping, catalogue) are built.
-- **Per-run network grants** `[idea]` — `NetworkPolicy` is currently fixed per sandbox
-  at the composition root; principle 2 wants network reach granted per run by the
-  supervisor, like sandbox levels. A grant on `SupervisionDecision` flows into
-  `SandboxExecutionRequest` and is honored by sandboxes that control the network
-  (Firecracker); approval verbs and the inbox record it.
 - **NuGet lock files** `[idea]` — `RestorePackagesWithLockFile` + `--locked-mode` in CI
   to pin the transitive graph (the `UglyToad.PdfPig` name-squat encounter is the
   motivating example). Currently blocked: enabling the property breaks `.slnx`

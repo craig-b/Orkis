@@ -82,6 +82,41 @@ internal sealed class FakeTool(string name = "fake_tool", ToolRisk risk = ToolRi
     }
 }
 
+/// <summary>A sandbox-capable tool that records the execution grant it received.</summary>
+internal sealed class FakeSandboxedTool(string name = "sandboxed_tool") : ISandboxedTool
+{
+    public int Invocations { get; private set; }
+
+    public Orkis.Sandboxing.ExecutionGrant? LastGrant { get; private set; }
+
+    public ToolDescriptor Descriptor { get; } =
+        new()
+        {
+            Name = name,
+            Description = "A sandbox-capable test tool.",
+            ParametersSchema = JsonDocument.Parse("""{"type":"object"}""").RootElement,
+            Risk = ToolRisk.Destructive,
+        };
+
+    public Task<ToolResult> InvokeAsync(ToolCall toolCall, CancellationToken cancellationToken = default)
+    {
+        Invocations++;
+        LastGrant = null;
+        return Task.FromResult(new ToolResult { ToolCallId = toolCall.Id, Content = "ran ungated" });
+    }
+
+    public Task<ToolResult> InvokeAsync(
+        ToolCall toolCall,
+        Orkis.Sandboxing.ExecutionGrant grant,
+        CancellationToken cancellationToken = default
+    )
+    {
+        Invocations++;
+        LastGrant = grant;
+        return Task.FromResult(new ToolResult { ToolCallId = toolCall.Id, Content = "ran granted" });
+    }
+}
+
 /// <summary>A cost calculator that charges a fixed amount per model call.</summary>
 internal sealed class FixedCostCalculator(decimal perCall) : Orkis.Runs.ICostCalculator
 {

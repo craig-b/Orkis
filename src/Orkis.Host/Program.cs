@@ -89,7 +89,7 @@ if (argList.Contains("--approvals"))
                 + $"(risk: {approval.Tool.Risk}, requested {approval.RequestedAt:u})"
         );
         Console.WriteLine($"  arguments: {approval.Call.Arguments.GetRawText()}");
-        Console.WriteLine($"  decide: --approve {approval.Call.Id} [h|s] | --deny {approval.Call.Id} [reason]");
+        Console.WriteLine($"  decide: --approve {approval.Call.Id} [h|s|n] | --deny {approval.Call.Id} [reason]");
     }
 
     return 0;
@@ -130,9 +130,12 @@ if (approveIndex >= 0 || denyIndex >= 0)
 
     var target = matches[0];
     var decision = approving
-        ? extra is "s" or "sandbox"
-            ? SupervisionDecision.Approve(SandboxLevel.Standard)
-            : SupervisionDecision.Approve()
+        ? extra switch
+        {
+            "s" or "sandbox" => SupervisionDecision.Approve(SandboxLevel.Standard),
+            "n" or "network" => SupervisionDecision.Approve(SandboxLevel.Standard, NetworkMode.RestrictedEgress),
+            _ => SupervisionDecision.Approve(),
+        }
         : SupervisionDecision.Deny(extra ?? "The operator denied this action.");
     await queue.DecideAsync(target.RunId, target.Call.Id, decision);
 

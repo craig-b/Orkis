@@ -69,6 +69,30 @@ public sealed class ChatClientSupervisorTests : IDisposable
     }
 
     [Fact]
+    public async Task ApproveCanGrantNetworkEgress()
+    {
+        EnqueueVerdict("""{"verdict":"approve","sandbox":"strict","network":"egress"}""");
+
+        var decision = await CreateSupervisor().ReviewAsync(Action("pip install requests"));
+
+        Assert.Equal(SupervisionVerdict.Approved, decision.Verdict);
+        Assert.Equal(SandboxLevel.Strict, decision.RequiredSandboxLevel);
+        Assert.Equal(NetworkMode.RestrictedEgress, decision.GrantedNetwork);
+    }
+
+    [Fact]
+    public async Task UnrecognizedNetworkGrantEscalates()
+    {
+        EnqueueVerdict("""{"verdict":"approve","network":"full-lan"}""");
+        _escalation.Enqueue(SupervisionDecision.Deny("nope"));
+
+        var decision = await CreateSupervisor().ReviewAsync(Action());
+
+        Assert.Equal(SupervisionVerdict.Denied, decision.Verdict);
+        Assert.Single(_escalation.Reviewed);
+    }
+
+    [Fact]
     public async Task DenyVerdictCarriesTheReason()
     {
         EnqueueVerdict("""{"verdict":"deny","reason":"reads credential files"}""");

@@ -20,11 +20,12 @@ public sealed class ChatClientSupervisor : ISupervisor
     private const string Instructions =
         "You are the security supervisor for an autonomous agent. Decide whether the "
         + "proposed tool call may execute. Respond with only a JSON object: "
-        + """{"verdict": "approve" | "deny" | "escalate", "reason": "<short>", "sandbox": "none" | "standard" | "strict"}"""
+        + """{"verdict": "approve" | "deny" | "escalate", "reason": "<short>", "sandbox": "none" | "standard" | "strict", "network": "none" | "egress"}"""
         + " — approve when the action is safe for its stated purpose; prefer approving "
         + "with a stronger \"sandbox\" over denying when isolation addresses the risk; "
-        + "deny only what is clearly harmful or against policy, with a reason the agent "
-        + "can act on; escalate when a human should decide.";
+        + "grant \"network\": \"egress\" (public internet only) solely when the action "
+        + "needs it; deny only what is clearly harmful or against policy, with a reason "
+        + "the agent can act on; escalate when a human should decide.";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -119,7 +120,7 @@ public sealed class ChatClientSupervisor : ISupervisor
         }
 
         SandboxLevel? sandbox = null;
-        var sandboxRecognized = true;
+        var grantsRecognized = true;
         switch (parsed?.Sandbox?.ToUpperInvariant())
         {
             case null or "" or "NONE":
@@ -131,13 +132,26 @@ public sealed class ChatClientSupervisor : ISupervisor
                 sandbox = SandboxLevel.Strict;
                 break;
             default:
-                sandboxRecognized = false;
+                grantsRecognized = false;
+                break;
+        }
+
+        NetworkMode? network = null;
+        switch (parsed?.Network?.ToUpperInvariant())
+        {
+            case null or "" or "NONE":
+                break;
+            case "EGRESS":
+                network = NetworkMode.RestrictedEgress;
+                break;
+            default:
+                grantsRecognized = false;
                 break;
         }
 
         return parsed?.VerdictValue?.ToUpperInvariant() switch
         {
-            "APPROVE" when sandboxRecognized => SupervisionDecision.Approve(sandbox),
+            "APPROVE" when grantsRecognized => SupervisionDecision.Approve(sandbox, network),
             "DENY" => SupervisionDecision.Deny(parsed.Reason ?? "The AI supervisor denied this action."),
             _ => null,
         };
@@ -153,5 +167,8 @@ public sealed class ChatClientSupervisor : ISupervisor
 
         [System.Text.Json.Serialization.JsonPropertyName("sandbox")]
         public string? Sandbox { get; init; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("network")]
+        public string? Network { get; init; }
     }
 }

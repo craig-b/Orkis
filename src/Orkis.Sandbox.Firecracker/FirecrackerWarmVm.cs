@@ -33,9 +33,11 @@ internal sealed class FirecrackerWarmVm : IAsyncDisposable
         TimeSpan idleTimeout,
         Action<FirecrackerWarmVm> onIdle,
         TimeProvider timeProvider,
-        IDisposable? networkLease
+        IDisposable? networkLease,
+        NetworkMode network
     )
     {
+        Network = network;
         _process = process;
         _vmDirectory = vmDirectory;
         _vsockPath = vsockPath;
@@ -61,6 +63,9 @@ internal sealed class FirecrackerWarmVm : IAsyncDisposable
         );
     }
 
+    /// <summary>The network mode this VM booted with; it cannot change while running.</summary>
+    public NetworkMode Network { get; }
+
     /// <summary>Commands currently executing in the VM.</summary>
     public int InFlight
     {
@@ -85,6 +90,7 @@ internal sealed class FirecrackerWarmVm : IAsyncDisposable
         Action<FirecrackerWarmVm> onIdle,
         TimeProvider timeProvider,
         IDisposable? networkLease,
+        NetworkMode network,
         CancellationToken cancellationToken
     )
     {
@@ -131,7 +137,8 @@ internal sealed class FirecrackerWarmVm : IAsyncDisposable
                     options.WarmVmIdleTimeout,
                     onIdle,
                     timeProvider,
-                    networkLease
+                    networkLease,
+                    network
                 );
             }
             catch (Exception ex) when (ex is SocketException or IOException)

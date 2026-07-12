@@ -131,7 +131,12 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
         {
             if (_options.EnableWarmVms && !_agentUnavailable)
             {
-                warmVm = await GetOrBootWarmVmAsync(workspaceImage, stagingDirectory, cancellationToken)
+                warmVm = await GetOrBootWarmVmAsync(
+                        workspaceImage,
+                        stagingDirectory,
+                        EffectiveNetwork(request),
+                        cancellationToken
+                    )
                     .ConfigureAwait(false);
                 warmVm?.BeginCommand();
             }
@@ -236,12 +241,21 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
     private async Task<FirecrackerWarmVm?> GetOrBootWarmVmAsync(
         string workspaceImage,
         string stagingDirectory,
+        NetworkMode network,
         CancellationToken cancellationToken
     )
     {
         if (_warmVms.TryGetValue(workspaceImage, out var existing))
         {
-            return existing;
+            if (existing.Network == network)
+            {
+                return existing;
+            }
+
+            // A VM cannot gain or lose its NIC while running: a changed network grant
+            // reboots the workspace VM in the new mode. Grants are rare and sticky in
+            // practice, and disk state survives the reboot.
+            await RemoveWarmVmAsync(workspaceImage, existing).ConfigureAwait(false);
         }
 
         if (File.Exists(workspaceImage))
@@ -260,7 +274,7 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
         }
 
         var vmDirectory = Path.Combine(_options.WorkingRoot, "vms", Guid.CreateVersion7().ToString("n"));
-        var networkLease = AcquireNetworkLease();
+        var networkLease = AcquireNetworkLease(network);
         string vmConfig;
         try
         {
@@ -275,7 +289,16 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
         // TryBootAsync owns the lease from here: released on boot failure, or with the
         // VM's disposal — a warm VM keeps its TAP for its whole lifetime.
         var vm = await FirecrackerWarmVm
-            .TryBootAsync(_options, vmConfig, vmDirectory, HandleVmIdle, _timeProvider, networkLease, cancellationToken)
+            .TryBootAsync(
+                _options,
+                vmConfig,
+                vmDirectory,
+                HandleVmIdle,
+                _timeProvider,
+                networkLease,
+                network,
+                cancellationToken
+            )
             .ConfigureAwait(false);
         if (vm is null)
         {
@@ -402,7 +425,7 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
     )
     {
         // The lease outlives the whole VM run; disposing it frees the TAP for reuse.
-        using var networkLease = AcquireNetworkLease();
+        using var networkLease = AcquireNetworkLease(EffectiveNetwork(request));
 
         var configPath = Path.Combine(executionDirectory, "vm.json");
         await File.WriteAllTextAsync(
@@ -732,12 +755,29 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
     }
 
     /// <summary>
-    /// Acquires a TAP lease when the policy grants network access, or
+    /// The network mode for one execution: a supervision-granted per-request override
+    /// when present, the configured policy otherwise.
+    /// </summary>
+    private NetworkMode EffectiveNetwork(SandboxExecutionRequest request)
+    {
+        var mode = request.Network ?? _options.Network.Mode;
+        if (mode == NetworkMode.Allowlist)
+        {
+            throw new NotSupportedException(
+                "NetworkMode.Allowlist is not yet implemented; use None or RestrictedEgress."
+            );
+        }
+
+        return mode;
+    }
+
+    /// <summary>
+    /// Acquires a TAP lease when the mode grants network access, or
     /// <see langword="null"/> for <see cref="NetworkMode.None"/>.
     /// </summary>
-    private TapLease? AcquireNetworkLease()
+    private TapLease? AcquireNetworkLease(NetworkMode mode)
     {
-        if (_options.Network.Mode != NetworkMode.RestrictedEgress)
+        if (mode != NetworkMode.RestrictedEgress)
         {
             return null;
         }

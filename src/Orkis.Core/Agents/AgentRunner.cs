@@ -349,12 +349,22 @@ public sealed class AgentRunner
             return Error(toolCall, $"Tool call denied by supervisor: {decision.Reason ?? "no reason given"}");
         }
 
-        if (decision.RequiredSandboxLevel is { } level && tool is not ISandboxedTool)
+        var grant =
+            decision.RequiredSandboxLevel is null && decision.GrantedNetwork is null
+                ? null
+                : new ExecutionGrant
+                {
+                    MinimumSandboxLevel = decision.RequiredSandboxLevel,
+                    Network = decision.GrantedNetwork,
+                };
+
+        if (grant is not null && tool is not ISandboxedTool)
         {
             RecordToolCall(toolCall.ToolName, "sandbox_rejected");
             return Error(
                 toolCall,
-                $"Supervisor requires sandbox level {level}, but tool '{toolCall.ToolName}' cannot run sandboxed."
+                $"The supervision decision grants execution capabilities (sandbox level or network), "
+                    + $"but tool '{toolCall.ToolName}' cannot run sandboxed."
             );
         }
 
@@ -367,8 +377,7 @@ public sealed class AgentRunner
         activity?.SetTag("gen_ai.tool.call.id", toolCall.Id);
         activity?.SetTag("orkis.tool.risk", tool.Descriptor.Risk.ToString());
 
-        var result = await ExecuteAsync(tool, toolCall, decision.RequiredSandboxLevel, cancellationToken)
-            .ConfigureAwait(false);
+        var result = await ExecuteAsync(tool, toolCall, grant, cancellationToken).ConfigureAwait(false);
 
         if (result.IsError)
         {
@@ -505,14 +514,14 @@ public sealed class AgentRunner
     private static async Task<ToolResult> ExecuteAsync(
         ITool tool,
         ToolCall toolCall,
-        SandboxLevel? requiredLevel,
+        ExecutionGrant? grant,
         CancellationToken cancellationToken
     )
     {
         try
         {
-            return requiredLevel is { } level
-                ? await ((ISandboxedTool)tool).InvokeAsync(toolCall, level, cancellationToken).ConfigureAwait(false)
+            return grant is not null
+                ? await ((ISandboxedTool)tool).InvokeAsync(toolCall, grant, cancellationToken).ConfigureAwait(false)
                 : await tool.InvokeAsync(toolCall, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

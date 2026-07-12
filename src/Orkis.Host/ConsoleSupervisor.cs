@@ -23,7 +23,7 @@ public sealed class ConsoleSupervisor : ISupervisor
         Console.WriteLine();
         Console.WriteLine($"┌─ supervision ─ tool '{action.Call.ToolName}' (risk: {action.Tool.Risk})");
         Console.WriteLine($"│  arguments: {action.Call.Arguments.GetRawText()}");
-        Console.Write("└─ run on [h]ost (no isolation) / in [s]andbox / [d]eny: ");
+        Console.Write("└─ run on [h]ost (no isolation) / in [s]andbox / sandbox with [n]etwork / [d]eny: ");
 
         var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
         var decision = answer switch
@@ -32,6 +32,11 @@ public sealed class ConsoleSupervisor : ISupervisor
             "h" or "host" => SupervisionDecision.Approve(),
             // Sandboxed: require at least standard isolation; the tool picks the weakest that satisfies it.
             "s" or "sandbox" or "sandboxed" => SupervisionDecision.Approve(Orkis.Sandboxing.SandboxLevel.Standard),
+            // Sandboxed with public-internet egress — a per-action network grant.
+            "n" or "network" => SupervisionDecision.Approve(
+                Orkis.Sandboxing.SandboxLevel.Standard,
+                Orkis.Sandboxing.NetworkMode.RestrictedEgress
+            ),
             _ => SupervisionDecision.Deny("The operator denied this action."),
         };
         return Task.FromResult(decision);

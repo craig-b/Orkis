@@ -33,22 +33,24 @@ public sealed class ShellTool(IEnumerable<ISandbox> sandboxes, string? workspace
         };
 
     public Task<ToolResult> InvokeAsync(ToolCall toolCall, CancellationToken cancellationToken = default) =>
-        RunAsync(toolCall, SandboxLevel.None, cancellationToken);
+        RunAsync(toolCall, new ExecutionGrant(), cancellationToken);
 
     public Task<ToolResult> InvokeAsync(
         ToolCall toolCall,
-        SandboxLevel minimumLevel,
+        ExecutionGrant grant,
         CancellationToken cancellationToken = default
-    ) => RunAsync(toolCall, minimumLevel, cancellationToken);
+    ) => RunAsync(toolCall, grant, cancellationToken);
 
     private async Task<ToolResult> RunAsync(
         ToolCall toolCall,
-        SandboxLevel minimumLevel,
+        ExecutionGrant grant,
         CancellationToken cancellationToken
     )
     {
         ArgumentNullException.ThrowIfNull(toolCall);
+        ArgumentNullException.ThrowIfNull(grant);
 
+        var minimumLevel = grant.MinimumSandboxLevel ?? SandboxLevel.None;
         var sandbox = _sandboxes.Where(s => s.Level >= minimumLevel).OrderBy(s => s.Level).FirstOrDefault();
         if (sandbox is null)
         {
@@ -69,6 +71,7 @@ public sealed class ShellTool(IEnumerable<ISandbox> sandboxes, string? workspace
                     Arguments = ["-c", command],
                     Timeout = TimeSpan.FromSeconds(30),
                     WorkspaceKey = workspaceKey,
+                    Network = grant.Network,
                 },
                 cancellationToken
             )

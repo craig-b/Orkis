@@ -84,6 +84,47 @@ public sealed class RestrictedEgressTests(PatchedRootfsFixture fixture)
     }
 
     [Fact]
+    public async Task PerRequestGrantOverridesTheConfiguredPolicy()
+    {
+        if (!Available)
+        {
+            return;
+        }
+
+        // The sandbox is configured with no network; the grant arrives per request —
+        // the supervision-granted path.
+        var sandbox = new FirecrackerSandbox(
+            Options.Create(
+                new FirecrackerSandboxOptions
+                {
+                    KernelImagePath = WarmVmTests.KernelPath,
+                    RootfsImagePath = fixture.RootfsPath!,
+                    WorkingRoot = _workingRoot,
+                    Network = NetworkPolicy.None,
+                }
+            )
+        );
+        _sandboxes.Add(sandbox);
+
+        var probe = "ls /sys/class/net | grep -c eth0";
+
+        var ungranted = await sandbox.ExecuteAsync(
+            new SandboxExecutionRequest { Executable = "/bin/sh", Arguments = ["-c", probe] }
+        );
+        Assert.Equal("0", ungranted.StandardOutput.Trim());
+
+        var granted = await sandbox.ExecuteAsync(
+            new SandboxExecutionRequest
+            {
+                Executable = "/bin/sh",
+                Arguments = ["-c", probe],
+                Network = NetworkMode.RestrictedEgress,
+            }
+        );
+        Assert.Equal("1", granted.StandardOutput.Trim());
+    }
+
+    [Fact]
     public async Task ConcurrentNetworkedVmsGetDistinctTaps()
     {
         if (!Available)

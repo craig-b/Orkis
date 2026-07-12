@@ -23,4 +23,12 @@ public sealed record SandboxExecutionRequest
 
     /// <summary>Maximum execution time before the sandbox terminates the command.</summary>
     public TimeSpan? Timeout { get; init; }
+
+    /// <summary>
+    /// Per-execution network reach, overriding the sandbox's configured policy — the
+    /// vehicle for supervision-granted network access. <see langword="null"/> keeps
+    /// the configured default. Honored by sandboxes that control the network
+    /// (Firecracker); namespace- and process-based sandboxes cannot enforce it.
+    /// </summary>
+    public NetworkMode? Network { get; init; }
 }
