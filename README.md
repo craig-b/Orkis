@@ -137,4 +137,4 @@ dotnet run --project src/Orkis.Host -- --resume <run-id>
 
 ## License
 
-TBD
+[Apache-2.0](LICENSE)
