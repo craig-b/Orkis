@@ -34,9 +34,17 @@ internal sealed class RunnerFactory(IServiceProvider provider, DaemonSettings se
         conversational ? $"chat-{runId}" : MemoryScopes.Global;
 
     public AgentRunner Create(string runId, bool conversational) =>
+        CreateForScope(WorkspaceKeyFor(runId, conversational), MemoryScopeFor(runId, conversational));
+
+    /// <summary>
+    /// Builds a runner whose storage-bearing tools operate in an explicit workspace and
+    /// memory scope — used by schedules, which scope by schedule id rather than run id
+    /// so successive firings share a working context.
+    /// </summary>
+    public AgentRunner CreateForScope(string workspaceKey, string memoryScope) =>
         new(
             provider.GetRequiredService<IChatClient>(),
-            BuildTools(provider, WorkspaceKeyFor(runId, conversational), MemoryScopeFor(runId, conversational)),
+            BuildTools(provider, workspaceKey, memoryScope),
             provider.GetRequiredService<ISupervisorResolver>(),
             provider.GetRequiredService<ICheckpointStore>(),
             provider.GetRequiredService<TimeProvider>(),

@@ -52,6 +52,9 @@ public sealed record RunResponse
 
     public string? SupervisorKey { get; init; }
 
+    /// <summary>Where the run came from (e.g. <c>schedule:&lt;id&gt;</c>), or null for a direct run.</summary>
+    public string? Origin { get; init; }
+
     public long InputTokens { get; init; }
 
     public long OutputTokens { get; init; }
@@ -113,6 +116,54 @@ public sealed record ApprovalResponse
 
     /// <summary>The proposed call's arguments as a JSON object.</summary>
     public required JsonElement Arguments { get; init; }
+}
+
+/// <summary>Body of <c>POST /v1/schedules</c>. A schedule is a cron-triggered run template.</summary>
+public sealed record CreateScheduleRequest
+{
+    public required string Name { get; init; }
+
+    /// <summary>Cron expression (Cronos syntax; a sixth field adds seconds).</summary>
+    public required string Cron { get; init; }
+
+    public required string Prompt { get; init; }
+
+    public string? SupervisorKey { get; init; }
+
+    public string? Model { get; init; }
+
+    public IReadOnlyList<string>? ToolNames { get; init; }
+
+    /// <summary><c>fresh</c>, <c>sharedStorage</c>, or <c>sharedStorageWithHandoff</c>.</summary>
+    public string? Continuity { get; init; }
+
+    public long? MaxTokens { get; init; }
+
+    public bool Enabled { get; init; } = true;
+}
+
+/// <summary>A schedule as reported by <c>GET /v1/schedules</c>.</summary>
+public sealed record ScheduleResponse
+{
+    public required string Id { get; init; }
+
+    public required string Name { get; init; }
+
+    public required string Cron { get; init; }
+
+    public required string Prompt { get; init; }
+
+    public required string SupervisorKey { get; init; }
+
+    public string? Model { get; init; }
+
+    public required string Continuity { get; init; }
+
+    public required bool Enabled { get; init; }
+
+    public DateTimeOffset? LastFiredAt { get; init; }
+
+    public string? LastRunId { get; init; }
 }
 
 /// <summary>Body of <c>POST /v1/runs/{id}/messages</c> — a chat's next user message.</summary>

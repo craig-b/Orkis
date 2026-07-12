@@ -168,6 +168,7 @@ public sealed class AgentRunner
             SupervisorKey = request.SupervisorKey,
             ModelKey = request.ModelKey,
             Conversational = request.Conversational,
+            Origin = request.Origin,
             CoreToolNames = [.. request.ToolNames ?? []],
         };
 

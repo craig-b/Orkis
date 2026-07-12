@@ -25,6 +25,9 @@ internal sealed class AgentRunState
     /// <summary>Whether this run is a chat (turn ends await the user instead of terminating).</summary>
     public bool Conversational { get; init; }
 
+    /// <summary>Where the run came from (e.g. <c>schedule:&lt;id&gt;</c>), or null for a direct run.</summary>
+    public string? Origin { get; init; }
+
     /// <summary>The conversation transcript so far.</summary>
     public List<ChatMessage> Messages { get; init; } = [];
 

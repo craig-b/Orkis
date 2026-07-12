@@ -201,7 +201,19 @@ orkis artifacts
 orkis info                               # capabilities: supervisors, models, tools
 orkis dash                               # live TUI: runs, approvals, event feed
 orkis chat "hello"                       # interactive multi-turn chat
+orkis schedules                          # list scheduled runs
+orkis schedules add "0 7 * * *" "Summarize overnight CI failures." \
+  --supervisor yolo --continuity sharedStorageWithHandoff
 ```
+
+Schedules are cron-triggered run templates (Cronos syntax; a sixth field adds
+seconds), fired by the daemon and persisted across restarts. Each firing is a
+fresh run — missed firings while the daemon was down are skipped, not caught up,
+and an overlapping firing is skipped. Continuity across firings is chosen per
+schedule: `fresh`, `sharedStorage` (a persistent workspace and memory scope), or
+`sharedStorageWithHandoff` (the previous firing's closing note seeds the next).
+Bound a schedule's autonomy by capability — `--supervisor yolo` with a tool
+restriction — rather than parking every action for approval.
 
 A chat is a run whose turns end awaiting your next message instead of
 terminating: one growing transcript, one budget, one working context — each chat

@@ -276,6 +276,46 @@ public sealed class OrkisClient : IDisposable
         return await ReadAsync<IReadOnlyList<ArtifactInfo>>(response, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>All schedules.</summary>
+    public async Task<IReadOnlyList<ScheduleResponse>> ListSchedulesAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await _http
+            .GetAsync(new Uri("/v1/schedules", UriKind.Relative), cancellationToken)
+            .ConfigureAwait(false);
+        return await ReadAsync<IReadOnlyList<ScheduleResponse>>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Creates a schedule.</summary>
+    public async Task<ScheduleResponse> CreateScheduleAsync(
+        CreateScheduleRequest request,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var response = await _http
+            .PostAsJsonAsync(new Uri("/v1/schedules", UriKind.Relative), request, JsonOptions, cancellationToken)
+            .ConfigureAwait(false);
+        return await ReadAsync<ScheduleResponse>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Deletes a schedule. Returns <see langword="false"/> when it did not exist.</summary>
+    public async Task<bool> DeleteScheduleAsync(string id, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(id);
+
+        using var response = await _http
+            .DeleteAsync(new Uri($"/v1/schedules/{Uri.EscapeDataString(id)}", UriKind.Relative), cancellationToken)
+            .ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
     /// <summary>
     /// Streams the run's events: recorded history after <paramref name="afterSequence"/>
     /// first, then — when <paramref name="follow"/> — live events until the run

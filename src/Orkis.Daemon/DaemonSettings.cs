@@ -25,6 +25,9 @@ public sealed record DaemonSettings
     /// <summary>Root directory for the artifact store.</summary>
     public required string ArtifactDirectory { get; init; }
 
+    /// <summary>Root directory for stored schedules.</summary>
+    public string ScheduleDirectory { get; init; } = "";
+
     /// <summary>Persistent workspace shared by the shell and artifact tools.</summary>
     public string WorkspaceKey { get; init; } = "default";
 

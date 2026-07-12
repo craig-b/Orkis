@@ -60,26 +60,25 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   `chat-<runId>` workspace and memory scope, deterministically reconstructed on
   resume, while one-shot runs share the default workspace and global memory.
   Remaining: an optional per-turn budget cap.
-- **Scheduled runs** `[idea]` — cron expression + a run template (prompt, model key,
-  supervisor key, budget, tool restriction via the existing
-  `AgentRunRequest.ToolNames` — autonomy bounded by *capability*, e.g. yolo with
-  read-only tools, rather than only by approval). The third dockerd-style runtime
-  object after MCP servers and (implicitly) runs: `POST /v1/schedules`, persisted in
-  daemon state, adopted on restart, skip-vs-catch-up policy for firings missed while
-  down. Firing continuity is a spectrum, chosen per schedule: *fresh* (nothing
-  carried); *shared storage* (fresh transcript, but the schedule owns a
-  `WorkspaceKey`/`MemoryScope` — both already exist per run, and `MemoryScope`'s doc
-  comment anticipated exactly this); or *shared storage + handoff*, where the previous
-  firing's closing note is injected verbatim into the next firing's prompt — a
-  deterministic baton, deliberately not left to semantic memory recall (top-K against
-  the prompt cannot guarantee "the note from the immediately previous firing").
-  Cheap first version: the run's final response text is the handoff, and the template
-  asks the agent to end with a status note; a dedicated `write_handoff` tool is the
-  explicit upgrade if that proves mushy. Full chat continuation across firings is
-  deliberately *not* offered: unbounded transcripts are compaction debt with no audit
-  benefit — fresh runs over shared storage is the state/compute separation principle
-  applied to time. Schedules and prompt templates unify: a schedule is a saved
-  template with a cron attached.
+- **Scheduled runs** `[scaffold]` — built (July 2026): cron (Cronos; a sixth field
+  adds seconds) + a run template (prompt, model key, supervisor key, budget, tool
+  restriction via `AgentRunRequest.ToolNames` — autonomy bounded by *capability*, e.g.
+  yolo with read-only tools). The third dockerd-style runtime object: `Schedule` +
+  `IScheduleStore`/`FileScheduleStore`, `GET/POST/DELETE /v1/schedules`, `orkis
+  schedules [add|rm]`, fired by the `ScheduleRunner` background service — persisted in
+  daemon state, adopted on restart. Missed firings are *skipped* (LastFiredAt advances
+  to now, so the next future occurrence is computed rather than catching up), and a
+  firing still running when the next is due is skipped with a log line (no overlapping
+  firings on a shared workspace). Firings carry `Origin = schedule:<id>` (checkpointed,
+  surfaced in run summaries and `/v1/runs`) for grouping. Continuity is per-schedule:
+  *fresh*; *shared storage* (workspace + memory scope `sched-<id>`, via
+  `RunnerFactory.CreateForScope`, same mechanism chats use); or *shared storage +
+  handoff*, where the previous firing's final response text is injected verbatim into
+  the next firing's prompt — a deterministic baton, not left to semantic recall. Full
+  chat continuation across firings is deliberately *not* offered (unbounded transcripts
+  are compaction debt with no audit benefit). Remaining: a `write_handoff` tool if the
+  final-text-as-handoff proves mushy, and PATCH/enable-disable over the wire (the model
+  supports it; only create/list/delete are exposed).
 - **Web UI** `[idea]` — the compose-stack UI, and the thing that makes the daemon
   usable day-to-day. **Design settled (July 2026): the daemon has no face and no
   network.** The daemon listens on its Unix socket only; a separate `Orkis.Web`
@@ -103,10 +102,18 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   decisions (already in the event log), MCP/schedule management (the runtime-object
   APIs), prompt templates. Prerequisite endpoints are all built: transcript and
   artifact content (`GET /v1/artifacts/{name}`, `orkis artifacts <name> [-o]`).
-- **Notifications** `[idea]` — an unattended run that parks awaiting approval stalls
-  silently today. A webhook/ntfy hook on `run_paused` (and `run_completed` for
-  schedules) is cheap and changes usability out of proportion to its size: approvals
-  become interrupt-driven instead of polled.
+- **Notifications** `[idea]` — design settled (July 2026): the daemon already ships
+  the notification *primitive* (the event stream); delivery-to-a-human is
+  presentation, and presentation lives web-side. Tier 1: the web UI toasts + browser
+  Notifications API on `run_paused` off its existing `/v1/events` subscription —
+  zero backend. Tier 2: Web Push via the gateway (service worker + VAPID;
+  subscriptions in gateway state next to sessions; the gateway holds its own client
+  subscription to the daemon's stream and pushes on filtered events) — also the step
+  that makes the UI an installable PWA, which may cover mobile entirely (Android and
+  iOS ≥ 16.4 support PWA push). Tier 3, if a native app ever exists: the same
+  gateway grows APNs/FCM. Accepted limitation: no gateway, no push — a daemon-only
+  deployment consumes raw events and brings its own delivery. A daemon-side generic
+  webhook remains a footnote for machine-to-machine integration if the need appears.
 - **Vector-native retrieval backends** `[idea]` — pgvector / Qdrant behind the same
   `IChunkStore`/`IRetriever` interfaces, for corpora beyond what `SqliteVectorStore`'s
   full-scan cosine handles (tens of thousands of chunks). pgvector doubles as part of

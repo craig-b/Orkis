@@ -8,6 +8,7 @@
     <PackageVersion Include="AngleSharp" Version="1.5.2" />
     <PackageVersion Include="Anthropic.SDK" Version="5.10.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="Cronos" Version="0.13.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.9" />

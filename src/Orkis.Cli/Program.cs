@@ -320,6 +320,116 @@ denyCommand.SetAction(
 );
 root.Subcommands.Add(denyCommand);
 
+// schedules ----------------------------------------------------------------------
+var schedulesCommand = new Command("schedules", "List, create, or remove scheduled runs.");
+schedulesCommand.SetAction(
+    (parseResult, cancellationToken) =>
+        WithClient(
+            parseResult,
+            async client =>
+            {
+                var schedules = await client.ListSchedulesAsync(cancellationToken);
+                if (schedules.Count == 0)
+                {
+                    Console.WriteLine("no schedules");
+                    return 0;
+                }
+
+                var table = new Table().AddColumns(
+                    "ID",
+                    "NAME",
+                    "CRON",
+                    "SUPERVISOR",
+                    "CONTINUITY",
+                    "ENABLED",
+                    "LAST FIRED"
+                );
+                foreach (var schedule in schedules)
+                {
+                    table.AddRow(
+                        schedule.Id.EscapeMarkup(),
+                        schedule.Name.EscapeMarkup(),
+                        schedule.Cron.EscapeMarkup(),
+                        schedule.SupervisorKey.EscapeMarkup(),
+                        schedule.Continuity.EscapeMarkup(),
+                        schedule.Enabled ? "yes" : "[dim]no[/]",
+                        schedule.LastFiredAt?.ToString("u", CultureInfo.InvariantCulture) ?? "-"
+                    );
+                }
+
+                AnsiConsole.Write(table);
+                return 0;
+            }
+        )
+);
+
+var scheduleCronArgument = new Argument<string>("cron") { Description = "Cron expression (a 6th field adds seconds)." };
+var schedulePromptArgument = new Argument<string>("prompt") { Description = "The prompt each firing runs." };
+var scheduleNameOption = new Option<string?>("--name") { Description = "A name for the schedule." };
+var scheduleContinuityOption = new Option<string?>("--continuity")
+{
+    Description = "fresh (default), sharedStorage, or sharedStorageWithHandoff.",
+};
+var addScheduleCommand = new Command("add", "Create a schedule.");
+addScheduleCommand.Arguments.Add(scheduleCronArgument);
+addScheduleCommand.Arguments.Add(schedulePromptArgument);
+addScheduleCommand.Options.Add(scheduleNameOption);
+addScheduleCommand.Options.Add(supervisorOption);
+addScheduleCommand.Options.Add(modelOption);
+addScheduleCommand.Options.Add(scheduleContinuityOption);
+addScheduleCommand.Options.Add(maxTokensOption);
+addScheduleCommand.SetAction(
+    (parseResult, cancellationToken) =>
+        WithClient(
+            parseResult,
+            async client =>
+            {
+                var cron = parseResult.GetValue(scheduleCronArgument)!;
+                var prompt = parseResult.GetValue(schedulePromptArgument)!;
+                var created = await client.CreateScheduleAsync(
+                    new CreateScheduleRequest
+                    {
+                        Name = parseResult.GetValue(scheduleNameOption) ?? prompt,
+                        Cron = cron,
+                        Prompt = prompt,
+                        SupervisorKey = parseResult.GetValue(supervisorOption),
+                        Model = parseResult.GetValue(modelOption),
+                        Continuity = parseResult.GetValue(scheduleContinuityOption),
+                        MaxTokens = parseResult.GetValue(maxTokensOption),
+                    },
+                    cancellationToken
+                );
+                Console.WriteLine(created.Id);
+                return 0;
+            }
+        )
+);
+schedulesCommand.Subcommands.Add(addScheduleCommand);
+
+var scheduleIdArgument = new Argument<string>("id") { Description = "The schedule to remove." };
+var removeScheduleCommand = new Command("rm", "Remove a schedule.");
+removeScheduleCommand.Arguments.Add(scheduleIdArgument);
+removeScheduleCommand.SetAction(
+    (parseResult, cancellationToken) =>
+        WithClient(
+            parseResult,
+            async client =>
+            {
+                var id = parseResult.GetValue(scheduleIdArgument)!;
+                if (await client.DeleteScheduleAsync(id, cancellationToken))
+                {
+                    Console.WriteLine($"removed {id}");
+                    return 0;
+                }
+
+                AnsiConsole.MarkupLine($"[red]error:[/] no schedule '{id.EscapeMarkup()}'.");
+                return 1;
+            }
+        )
+);
+schedulesCommand.Subcommands.Add(removeScheduleCommand);
+root.Subcommands.Add(schedulesCommand);
+
 // info ---------------------------------------------------------------------------
 var infoCommand = new Command("info", "Show what the daemon offers: supervisors, models, sandbox, tools.");
 infoCommand.SetAction(

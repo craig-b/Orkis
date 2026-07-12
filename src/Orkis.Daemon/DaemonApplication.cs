@@ -209,6 +209,15 @@ public static class DaemonApplication
         );
         services.AddSingleton<RunExecutor>();
 
+        // Schedules: fired by a background service, persisted so they survive restart.
+        // Defaults beside the checkpoints when unset, so embedding callers need not
+        // configure a path.
+        var scheduleDirectory = string.IsNullOrEmpty(settings.ScheduleDirectory)
+            ? Path.Combine(settings.CheckpointDirectory, "..", "schedules")
+            : settings.ScheduleDirectory;
+        services.AddOrkisFileScheduleStore(options => options.RootPath = scheduleDirectory);
+        services.AddHostedService<ScheduleRunner>();
+
         configureServices?.Invoke(services);
 
         var app = builder.Build();

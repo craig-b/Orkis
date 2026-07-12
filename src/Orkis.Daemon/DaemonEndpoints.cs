@@ -7,6 +7,7 @@ using Orkis.Client;
 using Orkis.Clients;
 using Orkis.Runs;
 using Orkis.Sandboxing;
+using Orkis.Scheduling;
 using Orkis.Supervision;
 using Orkis.Tools;
 
@@ -336,6 +337,83 @@ internal static class DaemonEndpoints
         );
 
         app.MapGet(
+            "/v1/schedules",
+            static async (IScheduleStore schedules, CancellationToken cancellationToken) =>
+                Results.Ok((await schedules.ListAsync(cancellationToken)).Select(ToScheduleResponse).ToList())
+        );
+
+        app.MapPost(
+            "/v1/schedules",
+            static async (
+                CreateScheduleRequest body,
+                IScheduleStore schedules,
+                ISupervisorResolver supervisors,
+                CancellationToken cancellationToken
+            ) =>
+            {
+                if (string.IsNullOrWhiteSpace(body.Name) || string.IsNullOrWhiteSpace(body.Prompt))
+                {
+                    return Results.BadRequest(new { error = "name and prompt are required." });
+                }
+
+                if (!TryParseCron(body.Cron))
+                {
+                    return Results.BadRequest(new { error = $"Invalid cron expression '{body.Cron}'." });
+                }
+
+                if (
+                    body.Continuity is { Length: > 0 } continuityText
+                    && !Enum.TryParse<ScheduleContinuity>(continuityText, ignoreCase: true, out _)
+                )
+                {
+                    return Results.BadRequest(new { error = $"Unknown continuity '{body.Continuity}'." });
+                }
+
+                var supervisorKey = body.SupervisorKey ?? "queue";
+                try
+                {
+                    supervisors.Resolve(supervisorKey);
+                }
+                catch (InvalidOperationException)
+                {
+                    return Results.BadRequest(new { error = $"Unknown supervisor key '{supervisorKey}'." });
+                }
+
+                var schedule = new Schedule
+                {
+                    Id = Guid.CreateVersion7().ToString("n"),
+                    Name = body.Name,
+                    Cron = body.Cron,
+                    Prompt = body.Prompt,
+                    SupervisorKey = supervisorKey,
+                    ModelKey = body.Model is { Length: > 0 } model ? model : null,
+                    ToolNames = body.ToolNames,
+                    Continuity = body.Continuity is { Length: > 0 } value
+                        ? Enum.Parse<ScheduleContinuity>(value, ignoreCase: true)
+                        : ScheduleContinuity.Fresh,
+                    MaxTokens = body.MaxTokens,
+                    Enabled = body.Enabled,
+                };
+                await schedules.SaveAsync(schedule, cancellationToken);
+                return Results.Created($"/v1/schedules/{schedule.Id}", ToScheduleResponse(schedule));
+            }
+        );
+
+        app.MapDelete(
+            "/v1/schedules/{id}",
+            static async (string id, IScheduleStore schedules, CancellationToken cancellationToken) =>
+            {
+                if (await schedules.GetAsync(id, cancellationToken) is null)
+                {
+                    return Results.NotFound();
+                }
+
+                await schedules.DeleteAsync(id, cancellationToken);
+                return Results.NoContent();
+            }
+        );
+
+        app.MapGet(
             "/v1/artifacts/{name}",
             static async (string name, IArtifactStore artifacts, CancellationToken cancellationToken) =>
             {
@@ -347,6 +425,43 @@ internal static class DaemonEndpoints
         );
     }
 
+    private static bool TryParseCron(string cron)
+    {
+        if (string.IsNullOrWhiteSpace(cron))
+        {
+            return false;
+        }
+
+        try
+        {
+            var format =
+                cron.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 6
+                    ? Cronos.CronFormat.IncludeSeconds
+                    : Cronos.CronFormat.Standard;
+            Cronos.CronExpression.Parse(cron, format);
+            return true;
+        }
+        catch (Cronos.CronFormatException)
+        {
+            return false;
+        }
+    }
+
+    private static ScheduleResponse ToScheduleResponse(Schedule schedule) =>
+        new()
+        {
+            Id = schedule.Id,
+            Name = schedule.Name,
+            Cron = schedule.Cron,
+            Prompt = schedule.Prompt,
+            SupervisorKey = schedule.SupervisorKey,
+            Model = schedule.ModelKey,
+            Continuity = schedule.Continuity.ToString(),
+            Enabled = schedule.Enabled,
+            LastFiredAt = schedule.LastFiredAt,
+            LastRunId = schedule.LastRunId,
+        };
+
     private static RunResponse ToResponse(RunSummary summary, RunExecutor executor) =>
         new()
         {
@@ -354,6 +469,7 @@ internal static class DaemonEndpoints
             Status = summary.Status,
             Active = executor.IsActive(summary.RunId),
             SupervisorKey = summary.SupervisorKey,
+            Origin = summary.Origin,
             InputTokens = summary.InputTokens,
             OutputTokens = summary.OutputTokens,
             Cost = summary.Cost,

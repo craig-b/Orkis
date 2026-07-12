@@ -20,6 +20,9 @@ public sealed record RunSummary
     /// <summary>Whether the run is a chat (turns end awaiting the user).</summary>
     public bool Conversational { get; init; }
 
+    /// <summary>Where the run came from (e.g. <c>schedule:&lt;id&gt;</c>), or null for a direct run.</summary>
+    public string? Origin { get; init; }
+
     /// <summary>Total input tokens consumed so far.</summary>
     public long InputTokens { get; init; }
 

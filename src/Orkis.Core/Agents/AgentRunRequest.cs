@@ -52,4 +52,11 @@ public sealed record AgentRunRequest
     /// working context.
     /// </summary>
     public bool Conversational { get; init; }
+
+    /// <summary>
+    /// Where the run came from, for grouping and attribution — e.g.
+    /// <c>schedule:&lt;id&gt;</c> for a scheduled firing — or <see langword="null"/> for
+    /// a direct run. Checkpointed and surfaced in summaries.
+    /// </summary>
+    public string? Origin { get; init; }
 }

@@ -247,6 +247,7 @@
         "type": "Project",
         "dependencies": {
           "Anthropic.SDK": "[5.10.0, )",
+          "Cronos": "[0.13.0, )",
           "Microsoft.Extensions.AI": "[10.7.0, )",
           "Microsoft.Extensions.AI.OpenAI": "[10.7.0, )",
           "Orkis.Client": "[1.0.0, )",
@@ -358,6 +359,12 @@
           "Microsoft.Bcl.AsyncInterfaces": "10.0.3",
           "Microsoft.Extensions.AI.Abstractions": "10.3.0"
         }
+      },
+      "Cronos": {
+        "type": "CentralTransitive",
+        "requested": "[0.13.0, )",
+        "resolved": "0.13.0",
+        "contentHash": "Nkve+Yi0+ol3ntSBRHeW0ka9cJQ8vndSUvvkXqF9LVqwpoqWueyxu/HS275r98RDOmF7/mzRnZW5XXUBXob+TA=="
       },
       "Microsoft.Data.Sqlite": {
         "type": "CentralTransitive",
