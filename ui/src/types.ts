@@ -13,6 +13,7 @@ export interface RunResponse {
   status: RunStatus;
   active: boolean;
   supervisorKey?: string | null;
+  origin?: string | null;
   inputTokens: number;
   outputTokens: number;
   cost: number;

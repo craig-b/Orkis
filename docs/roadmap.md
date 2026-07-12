@@ -96,15 +96,13 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   context caveat: passkeys work on localhost but need TLS for remote origins. UI
   stack: TypeScript + Lit + esbuild — three pinned npm dependencies, no more, with
   the lockfile discipline mirrored (`npm ci`, Dependabot npm ecosystem). The UI
-  speaks only the public JSON+SSE protocol, so it stays disposable. Surfaces, roughly
-  in order:
+  speaks only the public JSON+SSE protocol, so it stays disposable. Built surfaces:
   runs + live event feed (`/v1/events`), approval inbox with grant buttons (the same
-  sandbox/network lattice as the CLI prompt), capabilities/status, chat view (once
-  chats land), cost accounting, artifact browser (needs a content endpoint —
-  `GET /v1/artifacts/{name}` doesn't exist yet), audit view over supervision
-  decisions (already in the event log), MCP/schedule management (the runtime-object
-  APIs), prompt templates. Prerequisite endpoints are all built: transcript and
-  artifact content (`GET /v1/artifacts/{name}`, `orkis artifacts <name> [-o]`).
+  sandbox/network lattice as the CLI prompt), capabilities/status, chat view, artifact
+  browser, schedule management (with pause/resume), MCP management, and cost accounting
+  (token/cost totals plus a direct-vs-scheduled split and a per-run table, aggregated
+  client-side from `/v1/runs` — no new backend). Remaining surfaces: an audit view over
+  supervision decisions (already in the event log) and prompt templates.
 - **Notifications** `[scaffold]` — the daemon ships the notification *primitive* (the
   event stream); delivery-to-a-human is presentation, done web-side. Tier 1 is built:
   the web UI toasts + fires a browser Notification on `run_paused` off the shell's

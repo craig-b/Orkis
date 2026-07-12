@@ -10,10 +10,11 @@ import "./views/chat-view.js";
 import "./views/schedules-view.js";
 import "./views/artifacts-view.js";
 import "./views/mcp-view.js";
+import "./views/cost-view.js";
 import "./views/info-view.js";
 
-type Tab = "runs" | "approvals" | "chat" | "schedules" | "artifacts" | "mcp" | "info";
-const tabs: Tab[] = ["runs", "approvals", "chat", "schedules", "artifacts", "mcp", "info"];
+type Tab = "runs" | "approvals" | "chat" | "schedules" | "artifacts" | "mcp" | "cost" | "info";
+const tabs: Tab[] = ["runs", "approvals", "chat", "schedules", "artifacts", "mcp", "cost", "info"];
 
 interface Toast {
   id: number;
@@ -158,6 +159,7 @@ export class OrkisApp extends LitElement {
         ${this.tab === "schedules" ? html`<schedules-view></schedules-view>` : ""}
         ${this.tab === "artifacts" ? html`<artifacts-view></artifacts-view>` : ""}
         ${this.tab === "mcp" ? html`<mcp-view></mcp-view>` : ""}
+        ${this.tab === "cost" ? html`<cost-view></cost-view>` : ""}
         ${this.tab === "info" ? html`<info-view></info-view>` : ""}
       </main>
       <div class="toasts">
