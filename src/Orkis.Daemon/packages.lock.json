@@ -1,0 +1,102 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "Anthropic.SDK": {
+        "type": "Direct",
+        "requested": "[5.10.0, )",
+        "resolved": "5.10.0",
+        "contentHash": "UQyZsDMcFy5pBNfEQXwNS5916dogqKSO76J4aynmdtR2q0QB3Ey/vB3vwll9/neAmH7IpKH7KpbzQ+SaYncxyQ==",
+        "dependencies": {
+          "Microsoft.Bcl.AsyncInterfaces": "10.0.3",
+          "Microsoft.Extensions.AI.Abstractions": "10.3.0"
+        }
+      },
+      "Microsoft.Extensions.AI": {
+        "type": "Direct",
+        "requested": "[10.7.0, )",
+        "resolved": "10.7.0",
+        "contentHash": "r8z4uyPq0kTk4+jH92/hPshf3HNUXKOQ9axJwp57QFz43G45BG4DNYpVE0vuSan1dI69LtWx9ttF0Z2ibnghNg==",
+        "dependencies": {
+          "Microsoft.Extensions.AI.Abstractions": "10.7.0",
+          "System.Numerics.Tensors": "10.0.9"
+        }
+      },
+      "Microsoft.Extensions.AI.OpenAI": {
+        "type": "Direct",
+        "requested": "[10.7.0, )",
+        "resolved": "10.7.0",
+        "contentHash": "K/xC0SRJeQiHJNNx+ZIYq9liAB5Uy/wUGjHPljEtRW63TCyGWEBkNVU7/UwizTxQk0Tm9pclDEoNmKTw7xtKfg==",
+        "dependencies": {
+          "Microsoft.Extensions.AI.Abstractions": "10.7.0",
+          "OpenAI": "2.11.0"
+        }
+      },
+      "Microsoft.Bcl.AsyncInterfaces": {
+        "type": "Transitive",
+        "resolved": "10.0.3",
+        "contentHash": "TV62UsrJZPX6gbt3c4WrtXh7bmaDIcMqf9uft1cc4L6gJXOU07hDGEh+bFQh/L2Az0R1WVOkiT66lFqS6G2NmA=="
+      },
+      "OpenAI": {
+        "type": "Transitive",
+        "resolved": "2.11.0",
+        "contentHash": "f0y5zOZVNhuc/gPQUHGkiljZlDUq2SddGOkGTPLHnjQC5mCiTCXq1BqxZ+xxxHU6bY0mEtFQJj1RlB2BpwD7Lw==",
+        "dependencies": {
+          "System.ClientModel": "1.10.0"
+        }
+      },
+      "System.ClientModel": {
+        "type": "Transitive",
+        "resolved": "1.10.0",
+        "contentHash": "lBEWs54F5Y5pZ9hC+8z4S/X76957ex+DPk7WecRHlbIHtrPfbRMMlOgI3iDn4Jpb3bSxvBnKaaHoD59auFjlBA==",
+        "dependencies": {
+          "System.Memory.Data": "10.0.3"
+        }
+      },
+      "System.Memory.Data": {
+        "type": "Transitive",
+        "resolved": "10.0.3",
+        "contentHash": "MaGhRfGunmrj/nHjtsi9XkhlYJ/ERGWrbA+BiSKNtGnAjc9XlG5EhAvak6VRcX5LYzPF6pBO8nJ613dTgzabig=="
+      },
+      "System.Numerics.Tensors": {
+        "type": "Transitive",
+        "resolved": "10.0.9",
+        "contentHash": "Rb71S3gggYVwEce9ugNw91vbr4vC4gThtx/imSJtLBW3AupEKujJPPQL6xF9q0DcNm6+z7hnYk7XqXaUpA4wDg=="
+      },
+      "orkis.abstractions": {
+        "type": "Project"
+      },
+      "orkis.core": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.AI.Abstractions": "[10.7.0, )",
+          "Orkis.Abstractions": "[1.0.0, )"
+        }
+      },
+      "orkis.runs.filesystem": {
+        "type": "Project",
+        "dependencies": {
+          "Orkis.Abstractions": "[1.0.0, )"
+        }
+      },
+      "orkis.sandbox.firecracker": {
+        "type": "Project",
+        "dependencies": {
+          "Orkis.Abstractions": "[1.0.0, )"
+        }
+      },
+      "orkis.sandbox.process": {
+        "type": "Project",
+        "dependencies": {
+          "Orkis.Abstractions": "[1.0.0, )"
+        }
+      },
+      "Microsoft.Extensions.AI.Abstractions": {
+        "type": "CentralTransitive",
+        "requested": "[10.7.0, )",
+        "resolved": "10.7.0",
+        "contentHash": "Lf822igMm8NkTYHZhTp7kjoNYkLLEvJnX3SkG/LVBvsZHC0Y9choogHz8YtITBoy0TOylM3kVUZ6iaHf0my0ug=="
+      }
+    }
+  }
+}

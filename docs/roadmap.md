@@ -40,11 +40,9 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 1 — Near-term (well-specified, clear next steps)
 
-- **NuGet lock files** `[idea]` — `RestorePackagesWithLockFile` + `--locked-mode` in CI
-  to pin the transitive graph (the `UglyToad.PdfPig` name-squat encounter is the
-  motivating example). Currently blocked: enabling the property breaks `.slnx`
-  solution-level restore on SDK 10.0.1xx ("Invalid framework identifier ''"); revisit
-  on SDK updates.
+*(Empty — built items graduate out, and the next priorities get promoted here from
+Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
+`.slnx` restore; the graph is pinned and CI restores with `--locked-mode`.)*
 
 ## Tier 2 — Medium-term (design mostly clear, larger or dependent)
 
