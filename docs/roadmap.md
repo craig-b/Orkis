@@ -46,6 +46,51 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
 
 ## Tier 2 — Medium-term (design mostly clear, larger or dependent)
 
+- **Chats: multi-turn runs** `[idea]` — design settled (July 2026): a chat is a
+  long-lived run, not a new entity. The checkpoint already *is* the conversation
+  (`AgentRunState.Messages`), so a user follow-up is a new entry point — append a user
+  turn to the transcript and run another segment (`POST /v1/runs/{id}/messages` on the
+  wire). Supervision, budgets, events, resume, and context compaction all apply
+  unchanged. Needs: an `AwaitingUser` status so a turn's end is not terminal; budget
+  semantics (the budget belongs to the chat, with an optional per-turn cap); and the
+  continuity trio wired per chat — its own `WorkspaceKey` and `MemoryScope`, making a
+  chat a durable working context (files + scoped memories), not just message history.
+  A transcript endpoint (`GET /v1/runs/{id}/transcript`) falls out of this — events
+  carry previews; the chat view (and debugging) needs the full messages.
+- **Scheduled runs** `[idea]` — cron expression + a run template (prompt, model key,
+  supervisor key, budget, tool restriction via the existing
+  `AgentRunRequest.ToolNames` — autonomy bounded by *capability*, e.g. yolo with
+  read-only tools, rather than only by approval). The third dockerd-style runtime
+  object after MCP servers and (implicitly) runs: `POST /v1/schedules`, persisted in
+  daemon state, adopted on restart, skip-vs-catch-up policy for firings missed while
+  down. Firing continuity is a spectrum, chosen per schedule: *fresh* (nothing
+  carried); *shared storage* (fresh transcript, but the schedule owns a
+  `WorkspaceKey`/`MemoryScope` — both already exist per run, and `MemoryScope`'s doc
+  comment anticipated exactly this); or *shared storage + handoff*, where the previous
+  firing's closing note is injected verbatim into the next firing's prompt — a
+  deterministic baton, deliberately not left to semantic memory recall (top-K against
+  the prompt cannot guarantee "the note from the immediately previous firing").
+  Cheap first version: the run's final response text is the handoff, and the template
+  asks the agent to end with a status note; a dedicated `write_handoff` tool is the
+  explicit upgrade if that proves mushy. Full chat continuation across firings is
+  deliberately *not* offered: unbounded transcripts are compaction debt with no audit
+  benefit — fresh runs over shared storage is the state/compute separation principle
+  applied to time. Schedules and prompt templates unify: a schedule is a saved
+  template with a cron attached.
+- **Web UI** `[idea]` — the compose-stack UI, and the thing that makes the daemon
+  usable day-to-day. Served by the daemon itself as static assets (same socket/token
+  auth, no CORS, unchanged in compose); speaks only the public JSON+SSE protocol, so
+  the UI is a forcing function for protocol completeness. Surfaces, roughly in order:
+  runs + live event feed (`/v1/events`), approval inbox with grant buttons (the same
+  sandbox/network lattice as the CLI prompt), capabilities/status, chat view (once
+  chats land), cost accounting, artifact browser (needs a content endpoint —
+  `GET /v1/artifacts/{name}` doesn't exist yet), audit view over supervision
+  decisions (already in the event log), MCP/schedule management (the runtime-object
+  APIs), prompt templates. Prerequisite endpoints: transcript, artifact content.
+- **Notifications** `[idea]` — an unattended run that parks awaiting approval stalls
+  silently today. A webhook/ntfy hook on `run_paused` (and `run_completed` for
+  schedules) is cheap and changes usability out of proportion to its size: approvals
+  become interrupt-driven instead of polled.
 - **Vector-native retrieval backends** `[idea]` — pgvector / Qdrant behind the same
   `IChunkStore`/`IRetriever` interfaces, for corpora beyond what `SqliteVectorStore`'s
   full-scan cosine handles (tens of thousands of chunks). pgvector doubles as part of
