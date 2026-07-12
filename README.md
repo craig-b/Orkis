@@ -135,6 +135,11 @@ dotnet run --project src/Orkis.Host -- --approve <call-id> h   # or s; or --deny
 dotnet run --project src/Orkis.Host -- --resume <run-id>
 ```
 
+With `--ai` (live runs only), the model itself is the first-line reviewer: it
+approves routine actions — optionally requiring a sandbox — denies clear policy
+violations with a reason the agent sees, and escalates anything it is unsure of
+into the same approval inbox for a human.
+
 ## Development
 
 Formatting is enforced in CI with [CSharpier](https://csharpier.com). Enable the

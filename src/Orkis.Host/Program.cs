@@ -28,6 +28,12 @@ if (resumeIndex >= 0)
 var offline = argList.Contains("--offline");
 var yolo = argList.Contains("--yolo");
 var queueMode = argList.Contains("--queue");
+var aiMode = argList.Contains("--ai");
+if (aiMode && offline)
+{
+    Console.Error.WriteLine("--ai needs a live model to review actions; it cannot combine with --offline.");
+    return 1;
+}
 var prompt =
     argList.FirstOrDefault(static a => !a.StartsWith('-'))
     ?? "Check the current time, then run a shell command that prints a greeting and the working directory.";
@@ -228,6 +234,19 @@ services.AddOrkisSupervisor(
         new QueueSupervisor(sp.GetRequiredService<IApprovalInbox>(), sp.GetRequiredService<TimeProvider>())
     )
 );
+
+// AI supervision (--ai): read-only tools pass, the model reviews the middle band,
+// and whatever it escalates parks in the same durable inbox for a human.
+services.AddOrkisSupervisor(
+    "ai",
+    static sp => new ThresholdSupervisor(
+        ToolRisk.ReadOnly,
+        new ChatClientSupervisor(
+            sp.GetRequiredService<IChatClient>(),
+            new QueueSupervisor(sp.GetRequiredService<IApprovalInbox>(), sp.GetRequiredService<TimeProvider>())
+        )
+    )
+);
 services.AddOrkisPricing(cost =>
 {
     // Indicative prices per million tokens — verify against current published pricing.
@@ -323,6 +342,7 @@ else
             + SystemPromptFragments.ConfabulationGuardrail,
         SupervisorKey =
             yolo ? "yolo"
+            : aiMode ? "ai"
             : queueMode ? "queue"
             : SupervisorKeys.Default,
         Budget = new RunBudget { MaxToolCalls = 10, MaxTokens = 100_000 },

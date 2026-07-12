@@ -40,13 +40,6 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 1 — Near-term (well-specified, clear next steps)
 
-- **AI supervisor** `[idea]` — a `ChatClientSupervisor` behind `ISupervisor`: renders
-  the `ProposedAction` (tool, declared risk, arguments) into a prompt and maps the
-  model's verdict to approve / deny-with-reason / escalate-to-inner. Same
-  works-with-any-`IChatClient` pattern `ChatClientReranker` proved. Composes both
-  ways: behind `ThresholdSupervisor` (read-only auto-passes) and in front of
-  `QueueSupervisor` (the AI handles the middle band; what it escalates parks in the
-  human approval inbox).
 - **MCP client** `[idea]` — consume Model Context Protocol servers as Orkis tools via
   the official `ModelContextProtocol` .NET SDK: an adapter mapping MCP tool schemas to
   `ToolDescriptor` (risk from MCP annotations where present, `Mutating` otherwise) and
