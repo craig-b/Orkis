@@ -28,4 +28,15 @@
 
   // Embeddings power memory and corpus retrieval; the provider must be OpenAI-kind.
   "embedding": { "provider": "openai", "model": "text-embedding-3-small" },
+
+  // Daemon runtime settings. Every one is optional and has a sensible default; the
+  // matching env var (ORKIS_DATA_DIR, ORKIS_SOCKET, ORKIS_SANDBOX, ORKIS_WORKSPACE,
+  // ORKIS_MCP_SERVER, ORKIS_CORPUS_DIR) overrides the file when set.
+
+  // "dataDir": "/var/lib/orkis",              // root for checkpoints, events, workspaces, …
+  // "socket": "/run/orkis/orkis.sock",        // Unix socket the daemon listens on
+  // "sandbox": "firecracker",                 // firecracker | bubblewrap | process; omit for auto
+  // "workspace": "default",                   // default persistent workspace key
+  // "mcpServer": "npx -y @some/mcp-server",   // an MCP server to fold into the tool catalogue
+  // "corpus": "/srv/knowledge-base",          // directory indexed for the search_corpus tool
 }

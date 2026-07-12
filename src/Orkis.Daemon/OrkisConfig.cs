@@ -21,6 +21,28 @@ public sealed class OrkisConfig
     /// <summary>The model used for embeddings (memory and corpus retrieval); its provider must be OpenAI-kind.</summary>
     public EmbeddingConfig? Embedding { get; init; }
 
+    /// <summary>Root directory for all daemon state (checkpoints, events, …); overridable per-directory by env.</summary>
+    public string? DataDir { get; init; }
+
+    /// <summary>The Unix socket path the daemon listens on.</summary>
+    public string? Socket { get; init; }
+
+    /// <summary>Isolation sandbox: <c>firecracker</c>, <c>bubblewrap</c>, <c>process</c>, or omit for auto.</summary>
+    public string? Sandbox { get; init; }
+
+    /// <summary>Default persistent workspace key.</summary>
+    public string? Workspace { get; init; }
+
+    /// <summary>MCP server to consume (stdio command line or http(s) endpoint).</summary>
+    public string? McpServer { get; init; }
+
+    /// <summary>Directory of documents to index for search_corpus.</summary>
+    public string? Corpus { get; init; }
+
+    /// <summary>The file this config was read from, for error messages.</summary>
+    [JsonIgnore]
+    public string SourcePath { get; private set; } = "";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         ReadCommentHandling = JsonCommentHandling.Skip,
@@ -45,8 +67,13 @@ public sealed class OrkisConfig
         return Path.Combine(configHome, "orkis", "config.json");
     }
 
-    /// <summary>Reads and resolves the config file, or <see langword="null"/> when none exists.</summary>
-    public static ResolvedConfig? Load(string? path = null)
+    /// <summary>
+    /// Reads and deserializes the config file (comments and trailing commas allowed),
+    /// or <see langword="null"/> when none exists. Model/provider references are not
+    /// resolved yet — call <see cref="ResolveModels"/> for that, so an offline daemon
+    /// can read the passthrough settings without requiring provider secrets.
+    /// </summary>
+    public static OrkisConfig? Load(string? path = null)
     {
         path ??= DefaultPath();
         if (!File.Exists(path))
@@ -54,23 +81,29 @@ public sealed class OrkisConfig
             return null;
         }
 
-        OrkisConfig config;
         try
         {
-            config =
+            var config =
                 JsonSerializer.Deserialize<OrkisConfig>(File.ReadAllText(path), JsonOptions)
                 ?? throw new OrkisConfigException($"Config file '{path}' is empty.");
+            config.SourcePath = path;
+            return config;
         }
         catch (JsonException ex)
         {
             throw new OrkisConfigException($"Config file '{path}' is not valid JSON: {ex.Message}", ex);
         }
-
-        return config.Resolve(path);
     }
 
-    private ResolvedConfig Resolve(string path)
+    /// <summary>
+    /// Resolves the declared providers and models into clients-ready records: looks up
+    /// each model's provider, resolves its secret, and validates the default and
+    /// embedding selections. Throws <see cref="OrkisConfigException"/> on any problem.
+    /// </summary>
+    public ResolvedConfig ResolveModels()
     {
+        var path = SourcePath;
+
         ResolvedModel ResolveModel(string key, string providerName, string modelId)
         {
             if (!Providers.TryGetValue(providerName, out var provider))

@@ -2,10 +2,28 @@ using Orkis.Daemon;
 using Orkis.Sandboxing;
 
 var offline = args.Contains("--offline") || Environment.GetEnvironmentVariable("ORKIS_OFFLINE") == "1";
-var dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "orkis");
 
-// Models come from the config file (JSONC providers + models) when present, otherwise
-// the legacy environment variables. Offline uses the scripted model and needs neither.
+// The config file (JSONC) is the primary boot-config surface; env vars override it and
+// built-in defaults fill the rest (env > file > default). Loaded before anything else
+// so a file-supplied data root can seed the derived directories below.
+OrkisConfig? config;
+try
+{
+    config = OrkisConfig.Load();
+}
+catch (OrkisConfigException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    return 1;
+}
+
+var dataRoot =
+    Environment.GetEnvironmentVariable("ORKIS_DATA_DIR")
+    ?? config?.DataDir
+    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "orkis");
+
+// Models come from the config file (providers + models) when present, otherwise the
+// legacy environment variables. Offline uses the scripted model and needs neither.
 IReadOnlyList<ResolvedModel> models = [];
 string? defaultModelKey = null;
 ResolvedModel? embedding = null;
@@ -13,9 +31,9 @@ if (!offline)
 {
     try
     {
-        if (OrkisConfig.Load() is { } config)
+        if (config is not null)
         {
-            (models, defaultModelKey, embedding) = (config.Models, config.DefaultModelKey, config.Embedding);
+            (models, defaultModelKey, embedding) = config.ResolveModels();
         }
         else if (LegacyModelsFromEnvironment() is { } legacy)
         {
@@ -37,7 +55,7 @@ if (!offline)
     }
 }
 
-// Sandbox: strongest available wins, overridable with ORKIS_SANDBOX=firecracker|bubblewrap|process.
+// Sandbox: strongest available wins, overridable via config or ORKIS_SANDBOX=firecracker|bubblewrap|process.
 var firecrackerHome =
     Environment.GetEnvironmentVariable("ORKIS_FIRECRACKER_HOME") ?? Path.Combine(dataRoot, "firecracker");
 var firecrackerKernel = Path.Combine(firecrackerHome, "vmlinux");
@@ -47,6 +65,7 @@ var firecrackerReady =
 
 var sandbox =
     Environment.GetEnvironmentVariable("ORKIS_SANDBOX")?.ToLowerInvariant()
+    ?? config?.Sandbox?.ToLowerInvariant()
     ?? (
         firecrackerReady ? "firecracker"
         : await BubblewrapSandbox.IsSupportedAsync() ? "bubblewrap"
@@ -56,13 +75,14 @@ var sandbox =
 if (sandbox == "firecracker" && !firecrackerReady)
 {
     Console.Error.WriteLine("Firecracker is not ready (KVM, binary, or guest images missing).");
-    Console.Error.WriteLine("Run scripts/setup-firecracker.sh, or choose another ORKIS_SANDBOX.");
+    Console.Error.WriteLine("Run scripts/setup-firecracker.sh, or choose another sandbox.");
     return 1;
 }
 
 var runtimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
 var socketPath =
     Environment.GetEnvironmentVariable("ORKIS_SOCKET")
+    ?? config?.Socket
     ?? Path.Combine(string.IsNullOrEmpty(runtimeDir) ? dataRoot : Path.Combine(runtimeDir, "orkis"), "orkis.sock");
 
 var settings = new DaemonSettings
@@ -74,19 +94,19 @@ var settings = new DaemonSettings
     ApprovalDirectory = Environment.GetEnvironmentVariable("ORKIS_APPROVAL_DIR") ?? Path.Combine(dataRoot, "approvals"),
     ArtifactDirectory = Environment.GetEnvironmentVariable("ORKIS_ARTIFACT_DIR") ?? Path.Combine(dataRoot, "artifacts"),
     ScheduleDirectory = Environment.GetEnvironmentVariable("ORKIS_SCHEDULE_DIR") ?? Path.Combine(dataRoot, "schedules"),
-    WorkspaceKey = Environment.GetEnvironmentVariable("ORKIS_WORKSPACE") ?? "default",
+    WorkspaceKey = Environment.GetEnvironmentVariable("ORKIS_WORKSPACE") ?? config?.Workspace ?? "default",
     Offline = offline,
     Models = models,
     DefaultModelKey = defaultModelKey,
     Embedding = embedding,
     MemoryDatabasePath = Environment.GetEnvironmentVariable("ORKIS_MEMORY_DB") ?? Path.Combine(dataRoot, "memory.db"),
-    CorpusDirectory = Environment.GetEnvironmentVariable("ORKIS_CORPUS_DIR"),
+    CorpusDirectory = Environment.GetEnvironmentVariable("ORKIS_CORPUS_DIR") ?? config?.Corpus,
     CorpusDatabasePath = Path.Combine(dataRoot, "corpus.db"),
     Sandbox = sandbox,
     FirecrackerKernelPath = firecrackerKernel,
     FirecrackerRootfsPath = firecrackerRootfs,
     FirecrackerEgress = Environment.GetEnvironmentVariable("ORKIS_NETWORK")?.ToLowerInvariant() == "egress",
-    McpServer = Environment.GetEnvironmentVariable("ORKIS_MCP_SERVER"),
+    McpServer = Environment.GetEnvironmentVariable("ORKIS_MCP_SERVER") ?? config?.McpServer,
 };
 
 var app = await DaemonApplication.CreateAsync(settings);
