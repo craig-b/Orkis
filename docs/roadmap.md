@@ -58,6 +58,11 @@ The through-lines these ideas are meant to respect:
   supervisor, like sandbox levels. A grant on `SupervisionDecision` flows into
   `SandboxExecutionRequest` and is honored by sandboxes that control the network
   (Firecracker); approval verbs and the inbox record it.
+- **NuGet lock files** `[idea]` — `RestorePackagesWithLockFile` + `--locked-mode` in CI
+  to pin the transitive graph (the `UglyToad.PdfPig` name-squat encounter is the
+  motivating example). Currently blocked: enabling the property breaks `.slnx`
+  solution-level restore on SDK 10.0.1xx ("Invalid framework identifier ''"); revisit
+  on SDK updates.
 - **Resilience** `[idea]` — retry with backoff and jitter for transient model-call
   failures (429s, 5xx, timeouts) as a delegating `IChatClient` middleware, so it
   composes at the client-builder level rather than inside the runner; retried calls
