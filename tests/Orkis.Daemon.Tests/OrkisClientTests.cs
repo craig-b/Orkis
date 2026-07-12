@@ -58,6 +58,20 @@ public sealed class OrkisClientTests(DaemonFixture fixture) : IClassFixture<Daem
     }
 
     [Fact]
+    public async Task CapabilitiesEnumerateWhatTheDaemonOffers()
+    {
+        var capabilities = await _client.GetCapabilitiesAsync();
+
+        Assert.Contains("queue", capabilities.Supervisors);
+        Assert.Contains("yolo", capabilities.Supervisors);
+        Assert.Equal("queue", capabilities.DefaultSupervisor);
+        Assert.Contains("alt", capabilities.Models);
+        Assert.Equal("process", capabilities.Sandbox);
+        Assert.False(capabilities.Memory);
+        Assert.Contains("run_shell_command", capabilities.Tools);
+    }
+
+    [Fact]
     public async Task ModelKeyRoutesTheRunAndIsRecordedInItsEvents()
     {
         var accepted = await _client.StartRunAsync(

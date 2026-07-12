@@ -61,6 +61,37 @@ public sealed record RunResponse
     public string? LastError { get; init; }
 }
 
+/// <summary>What the daemon offers, as reported by <c>GET /v1/capabilities</c>.</summary>
+public sealed record CapabilitiesResponse
+{
+    /// <summary>Registered supervisor keys, selectable per run.</summary>
+    public required IReadOnlyList<string> Supervisors { get; init; }
+
+    /// <summary>The supervisor used when a run selects none.</summary>
+    public required string DefaultSupervisor { get; init; }
+
+    /// <summary>Registered model keys, selectable per run.</summary>
+    public required IReadOnlyList<string> Models { get; init; }
+
+    /// <summary>Model id of the default chat client, or <see langword="null"/> offline.</summary>
+    public string? DefaultModel { get; init; }
+
+    /// <summary>The configured isolation sandbox.</summary>
+    public required string Sandbox { get; init; }
+
+    /// <summary>Whether agent memory (save/search/recall) is on.</summary>
+    public required bool Memory { get; init; }
+
+    /// <summary>Whether corpus retrieval (search_corpus) is on.</summary>
+    public required bool CorpusRetrieval { get; init; }
+
+    /// <summary>Always-on tool names.</summary>
+    public required IReadOnlyList<string> Tools { get; init; }
+
+    /// <summary>Tool names discoverable through search_tools (e.g. MCP contributions).</summary>
+    public required IReadOnlyList<string> CatalogTools { get; init; }
+}
+
 /// <summary>A pending approval as reported by <c>GET /v1/approvals</c>.</summary>
 public sealed record ApprovalResponse
 {

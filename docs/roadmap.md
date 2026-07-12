@@ -74,9 +74,10 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   like runs), never in the config file. (3) *Boot-only config* (sandbox plumbing,
   socket, data roots, auth): restart is the honest lifecycle; a daemon config file
   (models × providers × keys outgrow env vars) covers this, and file-config never
-  overlaps API-mutated state — no reconciliation. Precursor to all of it:
-  `GET /v1/capabilities` introspection (registered models, supervisor keys, sandbox
-  levels, MCP servers, memory/retrieval status) so UIs enumerate instead of hardcoding.
+  overlaps API-mutated state — no reconciliation. The precursor is built:
+  `GET /v1/capabilities` (and `orkis info`) enumerates registered models, supervisor
+  keys, sandbox, tools, and memory/retrieval status, backed by `OrkisRegistrations`
+  since keyed services cannot be enumerated from the container.
 - **Daemon clients + protocol growth** `[scaffold]` — the daemon itself is built
   (`Orkis.Daemon`, July 2026): a long-lived composition root owning the stateful side —
   run registry with checkpoint adoption on restart (`RunRegistry` over

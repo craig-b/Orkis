@@ -70,6 +70,15 @@ public sealed class OrkisClient : IDisposable
         }
     }
 
+    /// <summary>What the daemon offers: supervisors, models, sandbox, tools.</summary>
+    public async Task<CapabilitiesResponse> GetCapabilitiesAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await _http
+            .GetAsync(new Uri("/v1/capabilities", UriKind.Relative), cancellationToken)
+            .ConfigureAwait(false);
+        return await ReadAsync<CapabilitiesResponse>(response, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Starts a run; the daemon executes it in the background.</summary>
     public async Task<RunAcceptedResponse> StartRunAsync(
         StartRunRequest request,

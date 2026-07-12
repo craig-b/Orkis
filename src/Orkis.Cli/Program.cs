@@ -271,6 +271,57 @@ denyCommand.SetAction(
 );
 root.Subcommands.Add(denyCommand);
 
+// info ---------------------------------------------------------------------------
+var infoCommand = new Command("info", "Show what the daemon offers: supervisors, models, sandbox, tools.");
+infoCommand.SetAction(
+    (parseResult, cancellationToken) =>
+        WithClient(
+            parseResult,
+            async client =>
+            {
+                var capabilities = await client.GetCapabilitiesAsync(cancellationToken);
+                AnsiConsole.MarkupLine(
+                    "[bold]supervisors:[/] "
+                        + string.Join(
+                            ", ",
+                            capabilities.Supervisors.Select(s =>
+                                s == capabilities.DefaultSupervisor
+                                    ? $"{s.EscapeMarkup()} [dim](default)[/]"
+                                    : s.EscapeMarkup()
+                            )
+                        )
+                );
+                AnsiConsole.MarkupLine(
+                    "[bold]models:[/] "
+                        + $"default [dim]({capabilities.DefaultModel?.EscapeMarkup() ?? "offline script"})[/]"
+                        + (
+                            capabilities.Models.Count > 0
+                                ? ", " + string.Join(", ", capabilities.Models.Select(static m => m.EscapeMarkup()))
+                                : ""
+                        )
+                );
+                AnsiConsole.MarkupLine($"[bold]sandbox:[/] {capabilities.Sandbox.EscapeMarkup()}");
+                AnsiConsole.MarkupLine(
+                    $"[bold]memory:[/] {(capabilities.Memory ? "on" : "off")}"
+                        + $"   [bold]corpus retrieval:[/] {(capabilities.CorpusRetrieval ? "on" : "off")}"
+                );
+                AnsiConsole.MarkupLine(
+                    "[bold]tools:[/] " + string.Join(", ", capabilities.Tools.Select(static t => t.EscapeMarkup()))
+                );
+                if (capabilities.CatalogTools.Count > 0)
+                {
+                    AnsiConsole.MarkupLine(
+                        "[bold]catalogue:[/] "
+                            + string.Join(", ", capabilities.CatalogTools.Select(static t => t.EscapeMarkup()))
+                    );
+                }
+
+                return 0;
+            }
+        )
+);
+root.Subcommands.Add(infoCommand);
+
 // dash ---------------------------------------------------------------------------
 var dashCommand = new Command("dash", "Live dashboard: runs, pending approvals, and the event feed.");
 dashCommand.SetAction(

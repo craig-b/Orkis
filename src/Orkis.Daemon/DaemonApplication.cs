@@ -214,6 +214,18 @@ public static class DaemonApplication
             services.AddOrkisToolCatalog(_ => mcpToolSet.Tools);
         }
 
+        services.AddSingleton(
+            new DaemonInfo
+            {
+                Sandbox = settings.Sandbox,
+                DefaultModel = settings.Model,
+                MemoryEnabled = !settings.Offline && settings.EmbeddingModel is { Length: > 0 },
+                CorpusEnabled =
+                    !settings.Offline
+                    && settings.EmbeddingModel is { Length: > 0 }
+                    && settings.CorpusDirectory is { Length: > 0 },
+            }
+        );
         services.AddSingleton<RunExecutor>();
 
         configureServices?.Invoke(services);

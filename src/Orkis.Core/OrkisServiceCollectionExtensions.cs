@@ -81,6 +81,7 @@ public static class OrkisServiceCollectionExtensions
         ArgumentException.ThrowIfNullOrEmpty(key);
 
         services.AddKeyedSingleton<ISupervisor, TSupervisor>(key);
+        services.Configure<Orkis.OrkisRegistrations>(registrations => registrations.SupervisorKeys.Add(key));
         return services;
     }
 
@@ -99,6 +100,7 @@ public static class OrkisServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(factory);
 
         services.AddKeyedSingleton<ISupervisor>(key, (provider, _) => factory(provider));
+        services.Configure<Orkis.OrkisRegistrations>(registrations => registrations.SupervisorKeys.Add(key));
         return services;
     }
 
@@ -119,6 +121,7 @@ public static class OrkisServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(factory);
 
         services.AddKeyedSingleton<Microsoft.Extensions.AI.IChatClient>(key, (provider, _) => factory(provider));
+        services.Configure<Orkis.OrkisRegistrations>(registrations => registrations.ModelKeys.Add(key));
         return services;
     }
 }

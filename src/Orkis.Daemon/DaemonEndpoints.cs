@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Microsoft.Extensions.Options;
+using Orkis;
 using Orkis.Agents;
 using Orkis.Artifacts;
 using Orkis.Client;
@@ -6,6 +8,7 @@ using Orkis.Clients;
 using Orkis.Runs;
 using Orkis.Sandboxing;
 using Orkis.Supervision;
+using Orkis.Tools;
 
 namespace Orkis.Daemon;
 
@@ -22,6 +25,43 @@ internal static class DaemonEndpoints
     public static void MapOrkisDaemon(this WebApplication app)
     {
         app.MapGet("/v1/healthz", static () => Results.Ok(new { status = "ok" }));
+
+        // Introspection: what UIs enumerate instead of hardcoding. Keyed services are
+        // not enumerable from the container, so the DI helpers record their keys in
+        // OrkisRegistrations at registration time.
+        app.MapGet(
+            "/v1/capabilities",
+            static (
+                IOptions<OrkisRegistrations> registrations,
+                DaemonInfo info,
+                IEnumerable<ITool> tools,
+                IServiceProvider provider
+            ) =>
+            {
+                var catalog = provider.GetService<McpToolSet>();
+                return Results.Ok(
+                    new CapabilitiesResponse
+                    {
+                        // The "default" registration is an alias for the default
+                        // choice, not a distinct option.
+                        Supervisors =
+                        [
+                            .. registrations
+                                .Value.SupervisorKeys.Distinct(StringComparer.Ordinal)
+                                .Where(static key => key != SupervisorKeys.Default),
+                        ],
+                        DefaultSupervisor = "queue",
+                        Models = [.. registrations.Value.ModelKeys],
+                        DefaultModel = info.DefaultModel,
+                        Sandbox = info.Sandbox,
+                        Memory = info.MemoryEnabled,
+                        CorpusRetrieval = info.CorpusEnabled,
+                        Tools = [.. tools.Select(static t => t.Descriptor.Name)],
+                        CatalogTools = catalog is null ? [] : [.. catalog.Tools.Select(static t => t.Descriptor.Name)],
+                    }
+                );
+            }
+        );
 
         app.MapPost(
             "/v1/runs",

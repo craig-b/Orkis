@@ -197,6 +197,7 @@ orkis approvals                          # pending decisions
 orkis approve <run> <call> --sandbox standard --resume
 orkis deny <run> <call> --reason "not like this" --resume
 orkis artifacts
+orkis info                               # capabilities: supervisors, models, tools
 orkis dash                               # live TUI: runs, approvals, event feed
 ```
 
