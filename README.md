@@ -135,6 +135,15 @@ dotnet run --project src/Orkis.Host -- --approve <call-id> h   # or s; or --deny
 dotnet run --project src/Orkis.Host -- --resume <run-id>
 ```
 
+## Development
+
+Formatting is enforced in CI with [CSharpier](https://csharpier.com). Enable the
+pre-commit hook once per clone so commits format themselves:
+
+```sh
+git config core.hooksPath .githooks
+```
+
 ## License
 
 [Apache-2.0](LICENSE)

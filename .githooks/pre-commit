@@ -1,0 +1,14 @@
+#!/bin/sh
+# Formats staged C# files with CSharpier so commits always pass the CI check.
+# Enable once per clone:  git config core.hooksPath .githooks
+#
+# Note: re-staging after formatting stages the whole file, so partially staged
+# files lose their split; stage whole files when the hook is active.
+set -e
+
+staged="$(git diff --cached --name-only --diff-filter=ACMR -- '*.cs')"
+[ -z "$staged" ] && exit 0
+
+dotnet tool restore --verbosity quiet > /dev/null
+printf '%s\n' "$staged" | xargs dotnet csharpier format
+printf '%s\n' "$staged" | xargs git add
