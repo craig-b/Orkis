@@ -3,13 +3,22 @@ using Orkis.Web;
 // The gateway is the daemon's network face: it owns the TCP bind, the token, and the
 // UI assets, and proxies /v1/* over the daemon's Unix socket. Loopback is exempt from
 // auth by default (like the socket, trust is local); remote requests need the token.
-var dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "orkis");
+// Settings come from the shared config file's `web` section, with env vars overriding
+// it and built-in defaults filling the rest (env → file → default).
+var config = WebConfigFile.Load();
+var web = config?.Web;
+
+var dataRoot =
+    Environment.GetEnvironmentVariable("ORKIS_DATA_DIR")
+    ?? config?.DataDir
+    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "orkis");
 var runtimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
 var daemonSocket =
     Environment.GetEnvironmentVariable("ORKIS_SOCKET")
+    ?? config?.Socket
     ?? Path.Combine(string.IsNullOrEmpty(runtimeDir) ? dataRoot : Path.Combine(runtimeDir, "orkis"), "orkis.sock");
 
-var token = Environment.GetEnvironmentVariable("ORKIS_TOKEN");
+var token = Environment.GetEnvironmentVariable("ORKIS_TOKEN") ?? web?.Token;
 if (string.IsNullOrEmpty(token))
 {
     var tokenPath = Path.Combine(dataRoot, "token");
@@ -31,8 +40,8 @@ if (string.IsNullOrEmpty(token))
     Console.WriteLine($"token: persisted at {tokenPath} (set ORKIS_TOKEN to override)");
 }
 
-// Built UI assets live next to the binary when published; ORKIS_WEB_ASSETS overrides.
-var assetsPath = Environment.GetEnvironmentVariable("ORKIS_WEB_ASSETS");
+// Built UI assets live next to the binary when published; env/config override.
+var assetsPath = Environment.GetEnvironmentVariable("ORKIS_WEB_ASSETS") ?? web?.Assets;
 if (string.IsNullOrEmpty(assetsPath))
 {
     var defaultAssets = Path.Combine(AppContext.BaseDirectory, "wwwroot");
@@ -41,10 +50,12 @@ if (string.IsNullOrEmpty(assetsPath))
 
 var settings = new WebSettings
 {
-    ListenUrl = Environment.GetEnvironmentVariable("ORKIS_WEB_LISTEN") ?? "http://127.0.0.1:7420",
+    ListenUrl = Environment.GetEnvironmentVariable("ORKIS_WEB_LISTEN") ?? web?.Listen ?? "http://127.0.0.1:7420",
     DaemonSocketPath = daemonSocket,
     BearerToken = token,
-    RequireAuthOnLoopback = Environment.GetEnvironmentVariable("ORKIS_WEB_REQUIRE_AUTH") == "1",
+    RequireAuthOnLoopback = Environment.GetEnvironmentVariable("ORKIS_WEB_REQUIRE_AUTH") is { } requireAuth
+        ? requireAuth == "1"
+        : web?.RequireAuth ?? false,
     AssetsPath = assetsPath,
 };
 

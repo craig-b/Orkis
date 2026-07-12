@@ -180,4 +180,25 @@ public sealed class OrkisConfigTests : IDisposable
         Assert.Equal("npx some-mcp-server", config.McpServer);
         Assert.Equal("/srv/docs", config.Corpus);
     }
+
+    [Fact]
+    public void McpServersCombineSingularAndPluralDeDuplicated()
+    {
+        var config = OrkisConfig.Load(
+            Write(
+                """
+                {
+                  "mcpServer": "npx solo",
+                  "mcpServers": ["http://localhost:9000/mcp", "npx solo", "python3 srv.py"],
+                  "providers": {},
+                  "models": {}
+                }
+                """
+            )
+        );
+
+        Assert.NotNull(config);
+        // Singular first, then the array, with the duplicate "npx solo" collapsed.
+        Assert.Equal(["npx solo", "http://localhost:9000/mcp", "python3 srv.py"], config.AllMcpServers);
+    }
 }

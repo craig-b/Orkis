@@ -59,11 +59,11 @@ public sealed record DaemonSettings
     public string? CorpusDatabasePath { get; init; }
 
     /// <summary>
-    /// MCP server to consume: an <c>http(s)://</c> Streamable HTTP endpoint or a stdio
-    /// command line. Its tools join the searchable catalogue, and — annotations being
-    /// untrusted — pass supervision as mutating.
+    /// MCP servers to consume: each an <c>http(s)://</c> Streamable HTTP endpoint or a
+    /// stdio command line. Every server's tools join the searchable catalogue, and —
+    /// annotations being untrusted — pass supervision as mutating.
     /// </summary>
-    public string? McpServer { get; init; }
+    public IReadOnlyList<string> McpServers { get; init; } = [];
 
     /// <summary>Isolation sandbox: <c>process</c>, <c>bubblewrap</c>, or <c>firecracker</c>.</summary>
     public string Sandbox { get; init; } = "process";

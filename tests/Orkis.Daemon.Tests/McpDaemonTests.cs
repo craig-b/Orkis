@@ -34,7 +34,7 @@ public sealed class McpDaemonTests
                     ArtifactDirectory = Path.Combine(root, "artifacts"),
                     Offline = true,
                     Sandbox = "process",
-                    McpServer = $"python3 {serverScript}",
+                    McpServers = [$"python3 {serverScript}"],
                 }
             );
             await app.StartAsync();

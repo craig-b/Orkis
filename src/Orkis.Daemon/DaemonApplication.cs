@@ -38,10 +38,13 @@ public static class DaemonApplication
         ArgumentNullException.ThrowIfNull(settings);
 
         // Connect before building: a misconfigured server fails daemon startup
-        // loudly instead of leaving a silently tool-less catalogue.
-        var mcpToolSet = settings.McpServer is { Length: > 0 } serverSpec
-            ? await McpToolSet.ConnectAsync(serverSpec).ConfigureAwait(false)
-            : null;
+        // loudly instead of leaving a silently tool-less catalogue. Each server is its
+        // own McpToolSet; their tools are unioned into the catalogue below.
+        var mcpToolSets = new List<McpToolSet>();
+        foreach (var serverSpec in settings.McpServers)
+        {
+            mcpToolSets.Add(await McpToolSet.ConnectAsync(serverSpec).ConfigureAwait(false));
+        }
 
         PrepareSocket(settings.SocketPath);
 
@@ -177,10 +180,16 @@ public static class DaemonApplication
         // workspace and memory scope.
         services.AddSingleton(provider => new RunnerFactory(provider, settings));
 
-        if (mcpToolSet is not null)
+        if (mcpToolSets.Count > 0)
         {
-            services.AddSingleton(mcpToolSet); // Provider disposal shuts the server down.
-            services.AddOrkisToolCatalog(_ => mcpToolSet.Tools);
+            // Each instance registered as a captured singleton so provider disposal
+            // shuts its server down; the catalogue is the union of all their tools.
+            foreach (var toolSet in mcpToolSets)
+            {
+                services.AddSingleton(toolSet);
+            }
+
+            services.AddOrkisToolCatalog(_ => mcpToolSets.SelectMany(toolSet => toolSet.Tools));
         }
 
         services.AddSingleton(

@@ -287,7 +287,10 @@ data root — either as a header or exchanged at `/auth/session` for a cookie
 session (which is how the browser logs in). Clients pass the gateway URL instead
 of a socket path (`--socket http://host:7420 --token …`, or
 `ORKIS_HOST`/`ORKIS_TOKEN`). `ORKIS_WEB_LISTEN` binds beyond loopback; TLS
-and HTTP/2 belong to a reverse proxy in front. For SSE (the live event stream) to
+and HTTP/2 belong to a reverse proxy in front. The gateway reads the same config
+file as the daemon — `socket` to find it, plus a `web` section (`listen`, `token`,
+`assets`, `requireAuth`) — so both processes configure from one file, with the
+`ORKIS_*` env vars still overriding. For SSE (the live event stream) to
 stream through nginx, disable proxy buffering and use HTTP/1.1 upstream:
 
 ```nginx

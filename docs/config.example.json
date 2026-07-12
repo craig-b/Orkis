@@ -37,6 +37,20 @@
   // "socket": "/run/orkis/orkis.sock",        // Unix socket the daemon listens on
   // "sandbox": "firecracker",                 // firecracker | bubblewrap | process; omit for auto
   // "workspace": "default",                   // default persistent workspace key
-  // "mcpServer": "npx -y @some/mcp-server",   // an MCP server to fold into the tool catalogue
+  // "mcpServers": [                           // MCP servers to fold into the tool catalogue
+  //   "npx -y @some/mcp-server",              //   stdio: a command line
+  //   "https://mcp.example.com/mcp",          //   or an http(s) Streamable HTTP endpoint
+  // ],
   // "corpus": "/srv/knowledge-base",          // directory indexed for the search_corpus tool
+
+  // The Orkis.Web gateway (the daemon's network face) reads this same file — it uses
+  // `socket` above to reach the daemon, and its own `web` section for the TCP bind,
+  // token, and UI assets. Env vars (ORKIS_WEB_LISTEN, ORKIS_TOKEN, ORKIS_WEB_ASSETS,
+  // ORKIS_WEB_REQUIRE_AUTH) still override. Omit `token` to use the auto-persisted one.
+  // "web": {
+  //   "listen": "http://0.0.0.0:7420",
+  //   "token": "a-long-random-secret",
+  //   "assets": "/usr/share/orkis/wwwroot",
+  //   "requireAuth": false,                   // require the token on loopback too
+  // },
 }

@@ -33,11 +33,22 @@ public sealed class OrkisConfig
     /// <summary>Default persistent workspace key.</summary>
     public string? Workspace { get; init; }
 
-    /// <summary>MCP server to consume (stdio command line or http(s) endpoint).</summary>
+    /// <summary>A single MCP server to consume (stdio command line or http(s) endpoint).</summary>
     public string? McpServer { get; init; }
+
+    /// <summary>MCP servers to consume; combined with <see cref="McpServer"/> if both are given.</summary>
+    public IReadOnlyList<string>? McpServers { get; init; }
 
     /// <summary>Directory of documents to index for search_corpus.</summary>
     public string? Corpus { get; init; }
+
+    /// <summary>The MCP servers from both <see cref="McpServer"/> and <see cref="McpServers"/>, de-duplicated.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> AllMcpServers =>
+        (McpServer is { Length: > 0 } single ? [single, .. McpServers ?? []] : McpServers ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
     /// <summary>The file this config was read from, for error messages.</summary>
     [JsonIgnore]

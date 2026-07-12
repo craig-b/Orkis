@@ -106,7 +106,10 @@ var settings = new DaemonSettings
     FirecrackerKernelPath = firecrackerKernel,
     FirecrackerRootfsPath = firecrackerRootfs,
     FirecrackerEgress = Environment.GetEnvironmentVariable("ORKIS_NETWORK")?.ToLowerInvariant() == "egress",
-    McpServer = Environment.GetEnvironmentVariable("ORKIS_MCP_SERVER") ?? config?.McpServer,
+    // ORKIS_MCP_SERVER (comma-separated for several) overrides the file's server list.
+    McpServers = Environment.GetEnvironmentVariable("ORKIS_MCP_SERVER") is { Length: > 0 } mcpEnv
+        ? mcpEnv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        : config?.AllMcpServers ?? [],
 };
 
 var app = await DaemonApplication.CreateAsync(settings);
@@ -144,11 +147,13 @@ Console.WriteLine(
         ? "memory: off (no embedding model configured)"
         : $"memory: on ({settings.Embedding.ModelId}){(settings.CorpusDirectory is null ? "" : " + corpus retrieval")}"
 );
-if (app.Services.GetService<Orkis.Tools.McpToolSet>() is { } mcpToolSet)
+var mcpToolSets = app.Services.GetServices<Orkis.Tools.McpToolSet>().ToList();
+if (mcpToolSets.Count > 0)
 {
+    var mcpTools = mcpToolSets.SelectMany(s => s.Tools).ToList();
     Console.WriteLine(
-        $"mcp: {mcpToolSet.Tools.Count} tool(s) join the catalogue: "
-            + string.Join(", ", mcpToolSet.Tools.Select(t => t.Descriptor.Name))
+        $"mcp: {mcpToolSets.Count} server(s), {mcpTools.Count} tool(s) join the catalogue: "
+            + string.Join(", ", mcpTools.Select(t => t.Descriptor.Name))
     );
 }
 
