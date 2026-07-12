@@ -228,7 +228,10 @@ events multiplexed live over one connection — on top of runs/approvals snapsho
 Press `a` to decide pending approvals without leaving the dashboard, `q` to quit.
 
 Supervision is queue-based by default (`--supervisor` selects `yolo` or, on live
-runs, `ai`), so every risky action is a pending approval on the wire.
+runs, `ai`), so every risky action is a pending approval on the wire. Deciding an
+approval is the whole interaction — the daemon continues the run itself, so an
+unattended or scheduled run resumes the moment you approve from any client (no
+separate resume step), reconstructing the run's own workspace and memory scope.
 
 The protocol is plain HTTP/JSON over the socket — everything the CLI does works
 from `curl` too. A run's history streams as Server-Sent Events whose payloads are

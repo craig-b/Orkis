@@ -268,14 +268,12 @@ var sandboxOption = new Option<string?>("--sandbox")
 };
 var networkOption = new Option<string?>("--network") { Description = "Grant network reach: none or restrictedEgress." };
 var reasonOption = new Option<string?>("--reason") { Description = "Reason, surfaced to the agent when denied." };
-var alsoResumeOption = new Option<bool>("--resume") { Description = "Resume the run after deciding." };
 
-var approveCommand = new Command("approve", "Approve a pending tool call.");
+var approveCommand = new Command("approve", "Approve a pending tool call (the daemon then continues the run).");
 approveCommand.Arguments.Add(runIdArgument);
 approveCommand.Arguments.Add(callIdArgument);
 approveCommand.Options.Add(sandboxOption);
 approveCommand.Options.Add(networkOption);
-approveCommand.Options.Add(alsoResumeOption);
 approveCommand.SetAction(
     (parseResult, cancellationToken) =>
         WithClient(
@@ -291,18 +289,16 @@ approveCommand.SetAction(
                         SandboxLevel = parseResult.GetValue(sandboxOption),
                         Network = parseResult.GetValue(networkOption),
                     },
-                    parseResult.GetValue(alsoResumeOption),
                     cancellationToken
                 )
         )
 );
 root.Subcommands.Add(approveCommand);
 
-var denyCommand = new Command("deny", "Deny a pending tool call.");
+var denyCommand = new Command("deny", "Deny a pending tool call (the daemon then continues the run).");
 denyCommand.Arguments.Add(runIdArgument);
 denyCommand.Arguments.Add(callIdArgument);
 denyCommand.Options.Add(reasonOption);
-denyCommand.Options.Add(alsoResumeOption);
 denyCommand.SetAction(
     (parseResult, cancellationToken) =>
         WithClient(
@@ -313,7 +309,6 @@ denyCommand.SetAction(
                     parseResult.GetValue(runIdArgument)!,
                     parseResult.GetValue(callIdArgument)!,
                     new DecideApprovalRequest { Verdict = "deny", Reason = parseResult.GetValue(reasonOption) },
-                    parseResult.GetValue(alsoResumeOption),
                     cancellationToken
                 )
         )
@@ -594,18 +589,12 @@ static async Task<int> DecideAsync(
     string runId,
     string callId,
     DecideApprovalRequest decision,
-    bool alsoResume,
     CancellationToken cancellationToken
 )
 {
+    // The daemon continues the run once its approvals are decided — no resume here.
     await client.DecideApprovalAsync(runId, callId, decision, cancellationToken);
     Console.WriteLine($"{decision.Verdict}d: {callId}");
-    if (alsoResume)
-    {
-        await client.ResumeRunAsync(runId, cancellationToken);
-        Console.WriteLine($"resumed: {runId}");
-    }
-
     return 0;
 }
 
@@ -757,17 +746,16 @@ static string? PromptChatInput()
 }
 
 /// <summary>
-/// Prompts for each pending approval of the run and resumes it when every one is
-/// decided. Returns <see langword="false"/> when the operator leaves decisions
-/// pending (or the terminal is not interactive).
+/// Prompts for each pending approval of the run. The daemon resumes the run once its
+/// approvals are decided, so this only decides. Returns <see langword="false"/> when
+/// the operator leaves decisions pending (or the terminal is not interactive).
 /// </summary>
 static async Task<bool> PromptDecisionsAsync(OrkisClient client, string runId, CancellationToken cancellationToken)
 {
     var pending = await client.ListApprovalsAsync(runId, cancellationToken);
     if (pending.Count == 0)
     {
-        // Decided elsewhere (another client) between the pause event and now.
-        await client.ResumeRunAsync(runId, cancellationToken);
+        // Decided elsewhere between the pause event and now — the daemon is resuming it.
         return true;
     }
 
@@ -839,6 +827,5 @@ static async Task<bool> PromptDecisionsAsync(OrkisClient client, string runId, C
         }
     }
 
-    await client.ResumeRunAsync(runId, cancellationToken);
     return true;
 }

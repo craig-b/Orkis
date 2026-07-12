@@ -172,6 +172,8 @@ internal static class DaemonEndpoints
                 string runId,
                 RunRegistry registry,
                 RunExecutor executor,
+                RunnerFactory runners,
+                IScheduleStore schedules,
                 CancellationToken cancellationToken
             ) =>
             {
@@ -188,7 +190,8 @@ internal static class DaemonEndpoints
                     );
                 }
 
-                if (!executor.TryResume(runId, summary.Conversational))
+                var (workspace, memoryScope) = await ResolveScopeAsync(summary, runners, schedules, cancellationToken);
+                if (!executor.TryResume(runId, workspace, memoryScope))
                 {
                     return Results.Conflict(new { error = $"Run '{runId}' is already executing." });
                 }
@@ -278,6 +281,10 @@ internal static class DaemonEndpoints
                 string callId,
                 DecideApprovalRequest body,
                 IApprovalInbox inbox,
+                RunRegistry registry,
+                RunExecutor executor,
+                RunnerFactory runners,
+                IScheduleStore schedules,
                 CancellationToken cancellationToken
             ) =>
             {
@@ -324,6 +331,25 @@ internal static class DaemonEndpoints
                 catch (InvalidOperationException ex)
                 {
                     return Results.Conflict(new { error = ex.Message });
+                }
+
+                // Deciding is enough: the daemon continues the run so clients never
+                // have to resume by hand. Waits until the run has no undecided calls
+                // (it pauses on one at a time) and is actually parked.
+                var remaining = await inbox.ListPendingAsync(cancellationToken);
+                if (!remaining.Any(approval => approval.RunId == runId))
+                {
+                    var summary = await registry.GetAsync(runId, cancellationToken);
+                    if (summary is { Status: RunStatus.AwaitingSupervision })
+                    {
+                        var (workspace, memoryScope) = await ResolveScopeAsync(
+                            summary,
+                            runners,
+                            schedules,
+                            cancellationToken
+                        );
+                        executor.TryResume(runId, workspace, memoryScope);
+                    }
                 }
 
                 return Results.NoContent();
@@ -423,6 +449,27 @@ internal static class DaemonEndpoints
                     : Results.Stream(content, "application/octet-stream", fileDownloadName: name);
             }
         );
+    }
+
+    /// <summary>
+    /// The workspace and memory scope to resume a run under, loading the run's
+    /// schedule when its origin points to one (a shared-storage schedule scopes by
+    /// schedule id).
+    /// </summary>
+    private static async Task<(string WorkspaceKey, string MemoryScope)> ResolveScopeAsync(
+        RunSummary summary,
+        RunnerFactory runners,
+        IScheduleStore schedules,
+        CancellationToken cancellationToken
+    )
+    {
+        Schedule? schedule = null;
+        if (summary.Origin is { } origin && origin.StartsWith("schedule:", StringComparison.Ordinal))
+        {
+            schedule = await schedules.GetAsync(origin["schedule:".Length..], cancellationToken).ConfigureAwait(false);
+        }
+
+        return runners.ScopeForResume(summary, schedule);
     }
 
     private static bool TryParseCron(string cron)

@@ -21,7 +21,7 @@ public sealed class OrkisClientTests(DaemonFixture fixture) : IClassFixture<Daem
     }
 
     [Fact]
-    public async Task DrivesTheFullQueueFlowTyped()
+    public async Task DecidingAnApprovalAutoContinuesTheRun()
     {
         var accepted = await _client.StartRunAsync(new StartRunRequest { Prompt = "Run the greeting command." });
 
@@ -34,12 +34,12 @@ public sealed class OrkisClientTests(DaemonFixture fixture) : IClassFixture<Daem
         var approval = Assert.Single(await _client.ListApprovalsAsync(accepted.RunId));
         Assert.Equal("run_shell_command", approval.ToolName);
 
+        // Deciding is the only action — no explicit resume. The daemon continues it.
         await _client.DecideApprovalAsync(
             approval.RunId,
             approval.CallId,
             new DecideApprovalRequest { Verdict = "approve" }
         );
-        await _client.ResumeRunAsync(accepted.RunId);
 
         var completed = await WaitForRunAsync(accepted.RunId, static r => !r.Active && r.Status == RunStatus.Completed);
         Assert.Equal(RunStatus.Completed, completed.Status);

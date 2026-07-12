@@ -6,6 +6,7 @@ using Orkis.Memory;
 using Orkis.Retrieval;
 using Orkis.Runs;
 using Orkis.Sandboxing;
+using Orkis.Scheduling;
 using Orkis.Supervision;
 using Orkis.Tools;
 
@@ -35,6 +36,33 @@ internal sealed class RunnerFactory(IServiceProvider provider, DaemonSettings se
 
     public AgentRunner Create(string runId, bool conversational) =>
         CreateForScope(WorkspaceKeyFor(runId, conversational), MemoryScopeFor(runId, conversational));
+
+    /// <summary>
+    /// The workspace and memory scope to reconstruct when resuming a run — derived
+    /// from what it started with, so a resume in any process rebuilds identical tools.
+    /// A chat scopes by run id; a scheduled run with shared storage scopes by its
+    /// schedule id (looked up for continuity); everything else uses the defaults.
+    /// </summary>
+    public (string WorkspaceKey, string MemoryScope) ScopeForResume(RunSummary summary, Schedule? schedule)
+    {
+        if (summary.Conversational)
+        {
+            return ($"chat-{summary.RunId}", $"chat-{summary.RunId}");
+        }
+
+        if (
+            summary.Origin is { } origin
+            && origin.StartsWith("schedule:", StringComparison.Ordinal)
+            && schedule is not null
+            && schedule.Continuity != ScheduleContinuity.Fresh
+        )
+        {
+            var scope = $"sched-{schedule.Id}";
+            return (scope, scope);
+        }
+
+        return (settings.WorkspaceKey, MemoryScopes.Global);
+    }
 
     /// <summary>
     /// Builds a runner whose storage-bearing tools operate in an explicit workspace and

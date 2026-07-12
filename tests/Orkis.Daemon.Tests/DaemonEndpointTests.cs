@@ -73,7 +73,7 @@ public sealed class DaemonEndpointTests(DaemonFixture fixture) : IClassFixture<D
     }
 
     [Fact]
-    public async Task QueueRunPausesThenApprovalAndResumeCompleteIt()
+    public async Task QueueRunPausesThenApprovalAutoContinuesIt()
     {
         var runId = await StartRunAsync();
 
@@ -88,15 +88,13 @@ public sealed class DaemonEndpointTests(DaemonFixture fixture) : IClassFixture<D
         var approval = Assert.Single(approvals);
         Assert.Equal("run_shell_command", approval.ToolName);
 
+        // Deciding is the whole interaction — the daemon resumes the run itself.
         var decide = await Client.PostAsJsonAsync(
             new Uri($"/v1/approvals/{runId}/{approval.CallId}", UriKind.Relative),
             new DecideApprovalRequest { Verdict = "approve" },
             DaemonFixture.JsonOptions
         );
         Assert.Equal(HttpStatusCode.NoContent, decide.StatusCode);
-
-        var resume = await Client.PostAsync(new Uri($"/v1/runs/{runId}/resume", UriKind.Relative), content: null);
-        Assert.Equal(HttpStatusCode.Accepted, resume.StatusCode);
 
         var completed = await WaitForRunAsync(runId, static r => !r.Active && r.Status == RunStatus.Completed);
         Assert.Equal(RunStatus.Completed, completed.Status);
@@ -126,7 +124,7 @@ public sealed class DaemonEndpointTests(DaemonFixture fixture) : IClassFixture<D
         );
         Assert.Equal(HttpStatusCode.NoContent, decide.StatusCode);
 
-        await Client.PostAsync(new Uri($"/v1/runs/{runId}/resume", UriKind.Relative), content: null);
+        // The daemon continues the run after a denial too — the agent sees the refusal.
         var completed = await WaitForRunAsync(runId, static r => !r.Active && r.Status == RunStatus.Completed);
         Assert.Equal(RunStatus.Completed, completed.Status);
     }

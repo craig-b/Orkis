@@ -41,13 +41,14 @@ internal sealed class RunExecutor
     }
 
     /// <summary>
-    /// Resumes the run in the background. <paramref name="conversational"/> comes from
-    /// the run's checkpoint, so the resumed run gets the same tool scope it started
-    /// with. Returns <see langword="false"/> when the run id is already executing.
+    /// Resumes the run in the background under an explicit workspace and memory scope
+    /// (see <see cref="RunnerFactory.ScopeForResume"/>), so the resumed run rebuilds
+    /// the same tools it started with. Returns <see langword="false"/> when the run id
+    /// is already executing.
     /// </summary>
-    public bool TryResume(string runId, bool conversational)
+    public bool TryResume(string runId, string workspaceKey, string memoryScope)
     {
-        var runner = _runners.Create(runId, conversational);
+        var runner = _runners.CreateForScope(workspaceKey, memoryScope);
         return TryExecute(runId, cancellationToken => runner.ResumeAsync(runId, cancellationToken));
     }
 

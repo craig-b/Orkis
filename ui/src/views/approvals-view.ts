@@ -46,15 +46,9 @@ export class ApprovalsView extends LitElement {
     body: { verdict: string; sandboxLevel?: string; network?: string; reason?: string },
   ): Promise<void> {
     try {
+      // The daemon continues the run once its approvals are decided.
       await api.decide(approval.runId, approval.callId, body);
-      // Resume once nothing is pending for the run — mirroring the CLI's flow.
-      const remaining = await api.approvals(approval.runId);
-      if (remaining.length === 0) {
-        await api.resume(approval.runId);
-        this.note = `${body.verdict}d and resumed ${shortId(approval.runId)}`;
-      } else {
-        this.note = `${body.verdict}d ${approval.callId}; ${remaining.length} still pending`;
-      }
+      this.note = `${body.verdict}d ${shortId(approval.runId)}`;
     } catch (error) {
       this.note = error instanceof Error ? error.message : String(error);
     }
