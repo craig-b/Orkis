@@ -78,6 +78,16 @@ The through-lines these ideas are meant to respect:
   `Orkis.Client` package sharing the wire records, MCP servers in the daemon
   composition, and bearer-token auth over TCP for remote clients.
 
+  Instance identity is the endpoint, dockerd-style: clients select a daemon with an
+  endpoint flag/env (`--socket`/`ORKIS_SOCKET`, defaulting to the well-known path, and
+  growing to accept URLs when TCP auth lands); multiple daemons are just different
+  sockets with different data directories, and docker-context-style named endpoints
+  can come later as a pure client convenience. The hazard is not two daemons on one
+  socket (refused at startup) but two daemons on one *data root* — both could resume
+  the same run and double-execute its tool calls. Fix when it matters: an exclusive
+  lock on the data root, or run-level leases if shared-store multi-daemon (compose
+  stack over Postgres) ever becomes a goal.
+
   **Protocol decision (July 2026): HTTP/JSON over a Unix domain socket, SSE for the
   event stream** — Kestrel + minimal APIs, not gRPC or SignalR. Rationale: `RunEvent`'s
   JSON-polymorphic form *is* the wire format (no parallel protobuf schema to maintain);
