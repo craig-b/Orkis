@@ -17,4 +17,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Orkis.Daemon\Orkis.Daemon.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None
+      Include="..\Orkis.Tools.Mcp.Tests\fixtures\test-mcp-server.py"
+      Link="fixtures\test-mcp-server.py"
+      CopyToOutputDirectory="PreserveNewest"
+    />
+  </ItemGroup>
 </Project>

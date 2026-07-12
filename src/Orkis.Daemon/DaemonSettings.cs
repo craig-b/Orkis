@@ -51,6 +51,13 @@ public sealed record DaemonSettings
     /// <summary>SQLite database for the indexed corpus; used when a corpus directory is set.</summary>
     public string? CorpusDatabasePath { get; init; }
 
+    /// <summary>
+    /// MCP server to consume: an <c>http(s)://</c> Streamable HTTP endpoint or a stdio
+    /// command line. Its tools join the searchable catalogue, and — annotations being
+    /// untrusted — pass supervision as mutating.
+    /// </summary>
+    public string? McpServer { get; init; }
+
     /// <summary>Isolation sandbox: <c>process</c>, <c>bubblewrap</c>, or <c>firecracker</c>.</summary>
     public string Sandbox { get; init; } = "process";
 

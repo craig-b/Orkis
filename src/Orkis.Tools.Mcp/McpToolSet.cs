@@ -21,6 +21,38 @@ public sealed class McpToolSet : IAsyncDisposable
     /// <summary>The server's tools, adapted to <see cref="ITool"/>.</summary>
     public IReadOnlyList<ITool> Tools { get; }
 
+    /// <summary>
+    /// Connects from a single configuration string — how hosts read
+    /// <c>ORKIS_MCP_SERVER</c>: an <c>http(s)://</c> value is a Streamable HTTP
+    /// endpoint, anything else a command line launched over stdio. The server's
+    /// display name defaults to the endpoint host or the command's file name.
+    /// </summary>
+    public static Task<McpToolSet> ConnectAsync(string serverSpec, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serverSpec);
+
+        if (
+            serverSpec.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || serverSpec.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            var endpoint = new Uri(serverSpec);
+            return ConnectAsync(
+                new McpHttpServerOptions { Endpoint = endpoint, Name = endpoint.Host },
+                cancellationToken
+            );
+        }
+
+        var parts = serverSpec.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var options = new McpStdioServerOptions { Command = parts[0], Name = Path.GetFileName(parts[0]) };
+        foreach (var argument in parts.Skip(1))
+        {
+            options.Arguments.Add(argument);
+        }
+
+        return ConnectAsync(options, cancellationToken);
+    }
+
     /// <summary>Launches the server over stdio and lists its tools.</summary>
     public static Task<McpToolSet> ConnectAsync(
         McpStdioServerOptions options,

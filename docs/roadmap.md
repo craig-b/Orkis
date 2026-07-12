@@ -69,9 +69,10 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   libraries stay embeddable in-process. Built since: the `Orkis.Client` typed client
   (wire records, SSE reader with an `UnknownRunEvent` fallback for forward
   compatibility) and the `orkis` CLI (attached runs with inline approval prompts,
-  `ps`/`logs -f`/`approvals`/`approve`/`deny`/`resume`/`artifacts`). What remains:
-  the TUI (below), the compose-stack web UI, editor integrations, MCP servers in
-  the daemon composition, and bearer-token auth over TCP for remote clients.
+  `ps`/`logs -f`/`approvals`/`approve`/`deny`/`resume`/`artifacts`). MCP servers now
+  join the daemon composition too (`ORKIS_MCP_SERVER`, tools in the searchable
+  catalogue). What remains: the compose-stack web UI, editor integrations, and
+  bearer-token auth over TCP for remote clients.
 
   **TUI decision (July 2026):** same binary as the CLI — an `orkis dash` verb —
   not a separate tool; both share `Orkis.Client`. The first cut is built:

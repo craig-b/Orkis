@@ -42,7 +42,7 @@ public sealed class DaemonFixture : IAsyncLifetime
             Sandbox = "process",
         };
 
-        _app = DaemonApplication.Create(settings);
+        _app = await DaemonApplication.CreateAsync(settings);
         await _app.StartAsync();
 
         Client = new HttpClient(

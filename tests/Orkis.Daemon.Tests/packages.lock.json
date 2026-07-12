@@ -258,7 +258,8 @@
           "Orkis.Rag.Sqlite": "[1.0.0, )",
           "Orkis.Runs.FileSystem": "[1.0.0, )",
           "Orkis.Sandbox.Firecracker": "[1.0.0, )",
-          "Orkis.Sandbox.Process": "[1.0.0, )"
+          "Orkis.Sandbox.Process": "[1.0.0, )",
+          "Orkis.Tools.Mcp": "[1.0.0, )"
         }
       },
       "orkis.memory.sqlite": {
@@ -332,6 +333,13 @@
           "Orkis.Abstractions": "[1.0.0, )"
         }
       },
+      "orkis.tools.mcp": {
+        "type": "Project",
+        "dependencies": {
+          "ModelContextProtocol.Core": "[1.4.1, )",
+          "Orkis.Abstractions": "[1.0.0, )"
+        }
+      },
       "AngleSharp": {
         "type": "CentralTransitive",
         "requested": "[1.5.2, )",
@@ -402,6 +410,16 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.9",
           "Microsoft.Extensions.Primitives": "10.0.9"
+        }
+      },
+      "ModelContextProtocol.Core": {
+        "type": "CentralTransitive",
+        "requested": "[1.4.1, )",
+        "resolved": "1.4.1",
+        "contentHash": "G/hOBZkJsvF3MSy0sOvXdxca5uRe2Sb4xk7xRuTWNZI45khVBjOLo6nSzGilctIICavNVxbxUF908fLYI9RxkQ==",
+        "dependencies": {
+          "Microsoft.Extensions.AI.Abstractions": "10.5.2",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.7"
         }
       },
       "PdfPig": {

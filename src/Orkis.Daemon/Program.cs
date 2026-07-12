@@ -85,9 +85,10 @@ var settings = new DaemonSettings
     FirecrackerKernelPath = firecrackerKernel,
     FirecrackerRootfsPath = firecrackerRootfs,
     FirecrackerEgress = Environment.GetEnvironmentVariable("ORKIS_NETWORK")?.ToLowerInvariant() == "egress",
+    McpServer = Environment.GetEnvironmentVariable("ORKIS_MCP_SERVER"),
 };
 
-var app = DaemonApplication.Create(settings);
+var app = await DaemonApplication.CreateAsync(settings);
 
 if (settings.EmbeddingModel is not null && settings.CorpusDirectory is { Length: > 0 } corpusDirectory)
 {
@@ -106,6 +107,14 @@ Console.WriteLine(
         ? "memory: off (no embeddings endpoint for this provider)"
         : $"memory: on ({settings.EmbeddingModel}){(settings.CorpusDirectory is null ? "" : " + corpus retrieval")}"
 );
+if (app.Services.GetService<Orkis.Tools.McpToolSet>() is { } mcpToolSet)
+{
+    Console.WriteLine(
+        $"mcp: {mcpToolSet.Tools.Count} tool(s) join the catalogue: "
+            + string.Join(", ", mcpToolSet.Tools.Select(t => t.Descriptor.Name))
+    );
+}
+
 Console.WriteLine($"data: {dataRoot}");
 
 await app.RunAsync();

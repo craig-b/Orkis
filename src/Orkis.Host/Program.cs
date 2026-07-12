@@ -298,34 +298,11 @@ foreach (var tool in DemoTools.CreateOrkisTools())
 // Annotations are not trusted: every MCP tool is Mutating and passes supervision.
 if (Environment.GetEnvironmentVariable("ORKIS_MCP_SERVER") is { Length: > 0 } mcpServer)
 {
-    McpToolSet mcpToolSet;
-    string mcpName;
-    if (
-        mcpServer.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-        || mcpServer.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
-    )
-    {
-        var endpoint = new Uri(mcpServer);
-        mcpName = endpoint.Host;
-        mcpToolSet = await McpToolSet.ConnectAsync(new McpHttpServerOptions { Endpoint = endpoint, Name = mcpName });
-    }
-    else
-    {
-        var mcpParts = mcpServer.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        mcpName = Path.GetFileName(mcpParts[0]);
-        var mcpOptions = new McpStdioServerOptions { Command = mcpParts[0], Name = mcpName };
-        foreach (var argument in mcpParts.Skip(1))
-        {
-            mcpOptions.Arguments.Add(argument);
-        }
-
-        mcpToolSet = await McpToolSet.ConnectAsync(mcpOptions);
-    }
-
+    var mcpToolSet = await McpToolSet.ConnectAsync(mcpServer);
     services.AddSingleton(mcpToolSet); // Provider disposal shuts the server down.
     catalogTools.AddRange(mcpToolSet.Tools.Select(ITool (tool) => new ConsoleLoggingTool(tool)));
     Console.WriteLine(
-        $"mcp: {mcpName} contributes {mcpToolSet.Tools.Count} tool(s) to the catalogue: "
+        $"mcp: {mcpToolSet.Tools.Count} tool(s) join the catalogue: "
             + string.Join(", ", mcpToolSet.Tools.Select(t => t.Descriptor.Name))
     );
 }

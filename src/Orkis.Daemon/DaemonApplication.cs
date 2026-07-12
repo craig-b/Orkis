@@ -24,12 +24,22 @@ namespace Orkis.Daemon;
 public static class DaemonApplication
 {
     /// <summary>
-    /// Creates the configured daemon. <paramref name="configureServices"/> runs after
-    /// the daemon's own registrations, so tests can replace services.
+    /// Creates the configured daemon. Async because consuming an MCP server means
+    /// connecting and listing its tools up front. <paramref name="configureServices"/>
+    /// runs after the daemon's own registrations, so tests can replace services.
     /// </summary>
-    public static WebApplication Create(DaemonSettings settings, Action<IServiceCollection>? configureServices = null)
+    public static async Task<WebApplication> CreateAsync(
+        DaemonSettings settings,
+        Action<IServiceCollection>? configureServices = null
+    )
     {
         ArgumentNullException.ThrowIfNull(settings);
+
+        // Connect before building: a misconfigured server fails daemon startup
+        // loudly instead of leaving a silently tool-less catalogue.
+        var mcpToolSet = settings.McpServer is { Length: > 0 } serverSpec
+            ? await McpToolSet.ConnectAsync(serverSpec).ConfigureAwait(false)
+            : null;
 
         PrepareSocket(settings.SocketPath);
 
@@ -173,6 +183,12 @@ public static class DaemonApplication
             provider.GetRequiredService<IArtifactStore>(),
             settings.WorkspaceKey
         ));
+
+        if (mcpToolSet is not null)
+        {
+            services.AddSingleton(mcpToolSet); // Provider disposal shuts the server down.
+            services.AddOrkisToolCatalog(_ => mcpToolSet.Tools);
+        }
 
         services.AddSingleton<RunExecutor>();
 

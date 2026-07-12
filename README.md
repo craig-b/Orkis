@@ -143,7 +143,7 @@ dotnet run --project src/Orkis.Host -- --resume <run-id>
 MCP servers plug in — local over stdio, or remote over Streamable HTTP — and
 contribute their tools through the searchable catalogue, so large servers cost no
 context until the model actually needs them. Tool annotations are not trusted by
-default, so MCP tools pass supervision:
+default, so MCP tools pass supervision. The daemon reads the same variable:
 
 ```sh
 ORKIS_MCP_SERVER="npx -y @modelcontextprotocol/server-everything" dotnet run --project src/Orkis.Host -- ...

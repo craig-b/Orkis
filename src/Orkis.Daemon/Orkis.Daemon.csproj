@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Orkis.Rag.Pdf\Orkis.Rag.Pdf.csproj" />
     <ProjectReference Include="..\Orkis.Rag.Sqlite\Orkis.Rag.Sqlite.csproj" />
     <ProjectReference Include="..\Orkis.Runs.FileSystem\Orkis.Runs.FileSystem.csproj" />
+    <ProjectReference Include="..\Orkis.Tools.Mcp\Orkis.Tools.Mcp.csproj" />
     <ProjectReference Include="..\Orkis.Sandbox.Firecracker\Orkis.Sandbox.Firecracker.csproj" />
     <ProjectReference Include="..\Orkis.Sandbox.Process\Orkis.Sandbox.Process.csproj" />
   </ItemGroup>
