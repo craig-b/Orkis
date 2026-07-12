@@ -2,6 +2,7 @@ using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Orkis.Daemon.Tests;
 
@@ -42,7 +43,16 @@ public sealed class DaemonFixture : IAsyncLifetime
             Sandbox = "process",
         };
 
-        _app = await DaemonApplication.CreateAsync(settings);
+        // An "alt" model key aliasing the default offline client, so model routing
+        // is testable over the wire without a live provider.
+        _app = await DaemonApplication.CreateAsync(
+            settings,
+            static services =>
+                services.AddOrkisChatClient(
+                    "alt",
+                    static provider => provider.GetRequiredService<Microsoft.Extensions.AI.IChatClient>()
+                )
+        );
         await _app.StartAsync();
 
         Client = new HttpClient(

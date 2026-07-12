@@ -19,6 +19,9 @@ internal sealed class AgentRunState
     /// <summary>Key of the supervisor governing this run.</summary>
     public string SupervisorKey { get; init; } = Orkis.Supervision.SupervisorKeys.Default;
 
+    /// <summary>Key of the registered chat client, or <see langword="null"/> for the default.</summary>
+    public string? ModelKey { get; init; }
+
     /// <summary>The conversation transcript so far.</summary>
     public List<ChatMessage> Messages { get; init; } = [];
 

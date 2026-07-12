@@ -342,6 +342,51 @@ services.AddSingleton(
         .Build()
 );
 
+// ORKIS_MODELS registers additional models under per-run keys (AgentRunRequest.ModelKey):
+//   ORKIS_MODELS="mini=openai:gpt-5-mini,sonnet=anthropic:claude-sonnet-5"
+if (!offline && Environment.GetEnvironmentVariable("ORKIS_MODELS") is { Length: > 0 } modelSpecs)
+{
+    foreach (var spec in modelSpecs.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        var keyAndTarget = spec.Split('=', 2);
+        var providerAndModel = keyAndTarget.Length == 2 ? keyAndTarget[1].Split(':', 2) : [];
+        if (keyAndTarget.Length != 2 || providerAndModel.Length != 2)
+        {
+            Console.Error.WriteLine($"ORKIS_MODELS entry '{spec}' is not key=provider:model.");
+            return 1;
+        }
+
+        var providerApiKey = providerAndModel[0] switch
+        {
+            "anthropic" => anthropicKey,
+            "openai" => openAiKey,
+            _ => null,
+        };
+        if (string.IsNullOrEmpty(providerApiKey))
+        {
+            Console.Error.WriteLine($"ORKIS_MODELS entry '{spec}': no API key for provider '{providerAndModel[0]}'.");
+            return 1;
+        }
+
+        var (modelKey, modelProvider, modelId) = (keyAndTarget[0], providerAndModel[0], providerAndModel[1]);
+        services.AddOrkisChatClient(
+            modelKey,
+            _ =>
+            {
+                IChatClient keyedClient = modelProvider switch
+                {
+                    "openai" => new OpenAIClient(providerApiKey).GetChatClient(modelId).AsIChatClient(),
+                    _ => new AnthropicClient(providerApiKey).Messages,
+                };
+                return new ChatClientBuilder(keyedClient)
+                    .Use(static inner => new ResilientChatClient(inner))
+                    .ConfigureOptions(options => options.ModelId ??= modelId)
+                    .Build();
+            }
+        );
+    }
+}
+
 // Memory and retrieval need an embeddings endpoint, which OpenAI has and Anthropic
 // does not: with one available, the SQLite memory store plus save/search tools come
 // on, and ORKIS_CORPUS_DIR additionally indexes a document directory for

@@ -16,6 +16,9 @@ public sealed record StartRunRequest
     /// <summary>Supervisor key for the run; defaults to the daemon's queue supervision.</summary>
     public string? SupervisorKey { get; init; }
 
+    /// <summary>Registered model key for the run, or <see langword="null"/> for the daemon's default.</summary>
+    public string? Model { get; init; }
+
     /// <summary>Optional token budget for the run.</summary>
     public long? MaxTokens { get; init; }
 

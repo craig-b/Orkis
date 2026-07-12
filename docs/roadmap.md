@@ -59,6 +59,24 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
 - **Execution floor** `[idea]` — a global minimum sandbox level ("everything runs in
   Firecracker"). Distinct from workspace flow policy: this governs where *code* runs, not
   where *data* goes.
+- **Configuration & runtime objects** `[scaffold]` — configuration has three lifetimes,
+  and conflating them is the trap. (1) *Per-run choices* follow the keyed-supervisor
+  pattern: registered under keys, selected by the run request, checkpointed so resume
+  reconnects — models are this (built: keyed `IChatClient` registrations with
+  `AgentRunRequest.ModelKey`), and it enables reviewer ≠ actor model splits. (2)
+  *Runtime-mutable daemon objects*, dockerd-style API resources rather than config
+  reloads — MCP servers are the clear case (`POST/DELETE /v1/mcp-servers`, a mutable
+  tool catalogue; active tools are already name-referenced and re-resolved per segment,
+  so detachment degrades to a typed "tool no longer exists"). Caveat recorded now:
+  attaching a stdio MCP server is arbitrary command execution on the host, so runtime
+  mutation is a privileged, audited operation from day one — config changes are events.
+  Mutated objects that should survive restart live in daemon *state* (adopted on boot,
+  like runs), never in the config file. (3) *Boot-only config* (sandbox plumbing,
+  socket, data roots, auth): restart is the honest lifecycle; a daemon config file
+  (models × providers × keys outgrow env vars) covers this, and file-config never
+  overlaps API-mutated state — no reconciliation. Precursor to all of it:
+  `GET /v1/capabilities` introspection (registered models, supervisor keys, sandbox
+  levels, MCP servers, memory/retrieval status) so UIs enumerate instead of hardcoding.
 - **Daemon clients + protocol growth** `[scaffold]` — the daemon itself is built
   (`Orkis.Daemon`, July 2026): a long-lived composition root owning the stateful side —
   run registry with checkpoint adoption on restart (`RunRegistry` over

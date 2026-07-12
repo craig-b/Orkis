@@ -2,6 +2,7 @@ using System.Text.Json;
 using Orkis.Agents;
 using Orkis.Artifacts;
 using Orkis.Client;
+using Orkis.Clients;
 using Orkis.Runs;
 using Orkis.Sandboxing;
 using Orkis.Supervision;
@@ -24,7 +25,12 @@ internal static class DaemonEndpoints
 
         app.MapPost(
             "/v1/runs",
-            static (StartRunRequest body, ISupervisorResolver supervisors, RunExecutor executor) =>
+            static (
+                StartRunRequest body,
+                ISupervisorResolver supervisors,
+                IChatClientResolver models,
+                RunExecutor executor
+            ) =>
             {
                 if (string.IsNullOrWhiteSpace(body.Prompt))
                 {
@@ -41,6 +47,18 @@ internal static class DaemonEndpoints
                     return Results.BadRequest(new { error = $"Unknown supervisor key '{supervisorKey}'." });
                 }
 
+                if (body.Model is { Length: > 0 } modelKey)
+                {
+                    try
+                    {
+                        models.Resolve(modelKey);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        return Results.BadRequest(new { error = $"Unknown model key '{modelKey}'." });
+                    }
+                }
+
                 var request = new AgentRunRequest
                 {
                     Prompt = body.Prompt,
@@ -52,6 +70,7 @@ internal static class DaemonEndpoints
                             + "then summarize what happened.\n\n"
                             + SystemPromptFragments.ConfabulationGuardrail,
                     SupervisorKey = supervisorKey,
+                    ModelKey = body.Model is { Length: > 0 } key ? key : null,
                     Budget = new RunBudget { MaxTokens = body.MaxTokens, MaxToolCalls = body.MaxToolCalls },
                 };
                 executor.TryStart(request);

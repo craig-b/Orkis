@@ -52,6 +52,7 @@ public sealed class AgentRunner
     private readonly IMemoryStore? _memoryStore;
     private readonly IContextPolicy? _contextPolicy;
     private readonly IRunEventSink? _eventSink;
+    private readonly Orkis.Clients.IChatClientResolver? _chatClientResolver;
     private readonly FrozenDictionary<string, ITool> _tools;
 
     public AgentRunner(
@@ -64,7 +65,8 @@ public sealed class AgentRunner
         IToolCatalog? toolCatalog = null,
         IMemoryStore? memoryStore = null,
         IContextPolicy? contextPolicy = null,
-        IRunEventSink? eventSink = null
+        IRunEventSink? eventSink = null,
+        Orkis.Clients.IChatClientResolver? chatClientResolver = null
     )
     {
         ArgumentNullException.ThrowIfNull(chatClient);
@@ -82,6 +84,7 @@ public sealed class AgentRunner
         _memoryStore = memoryStore;
         _contextPolicy = contextPolicy;
         _eventSink = eventSink;
+        _chatClientResolver = chatClientResolver;
         _tools = tools.ToFrozenDictionary(t => t.Descriptor.Name);
     }
 
@@ -106,6 +109,29 @@ public sealed class AgentRunner
     }
 
     private static string Preview(string? text) => text is null ? "" : (text.Length <= 500 ? text : text[..500] + "…");
+
+    /// <summary>
+    /// The chat client for a run's model key: the default client when no key is set,
+    /// otherwise the keyed registration — resolved per segment, so a resumed run
+    /// reconnects by key exactly as it does for its supervisor.
+    /// </summary>
+    private IChatClient ResolveChatClient(string? modelKey)
+    {
+        if (modelKey is null)
+        {
+            return _chatClient;
+        }
+
+        if (_chatClientResolver is null)
+        {
+            throw new InvalidOperationException(
+                $"The run requests model '{modelKey}', but no model registry is configured; "
+                    + "register keyed chat clients with AddOrkisChatClient."
+            );
+        }
+
+        return _chatClientResolver.Resolve(modelKey);
+    }
 
     /// <summary>Starts a new run and executes it until it completes or pauses.</summary>
     public async Task<AgentRunResult> StartAsync(AgentRunRequest request, CancellationToken cancellationToken = default)
@@ -132,11 +158,15 @@ public sealed class AgentRunner
             }
         }
 
+        // Fail fast on an unknown model key, before any state or events exist.
+        ResolveChatClient(request.ModelKey);
+
         var state = new AgentRunState
         {
             RunId = request.RunId,
             Budget = request.Budget,
             SupervisorKey = request.SupervisorKey,
+            ModelKey = request.ModelKey,
             CoreToolNames = [.. request.ToolNames ?? []],
         };
 
@@ -167,6 +197,7 @@ public sealed class AgentRunner
                         Timestamp = at,
                         Prompt = request.Prompt,
                         SupervisorKey = request.SupervisorKey,
+                        ModelKey = request.ModelKey,
                     },
                 cancellationToken
             )
@@ -288,6 +319,7 @@ public sealed class AgentRunner
     )
     {
         var supervisor = _supervisorResolver.Resolve(state.SupervisorKey);
+        var chatClient = ResolveChatClient(state.ModelKey);
 
         while (true)
         {
@@ -370,7 +402,7 @@ public sealed class AgentRunner
                 promptMessages = view.Messages;
             }
 
-            var response = await _chatClient
+            var response = await chatClient
                 .GetResponseAsync(promptMessages, BuildChatOptions(declaredTools), cancellationToken)
                 .ConfigureAwait(false);
 

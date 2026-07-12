@@ -54,6 +54,37 @@ if (sandbox == "firecracker" && !firecrackerReady)
     return 1;
 }
 
+// ORKIS_MODELS registers additional models selectable per run (orkis run --model <key>):
+//   ORKIS_MODELS="mini=openai:gpt-5-mini,sonnet=anthropic:claude-sonnet-5"
+var models = new List<ModelRegistration>();
+if (!offline && Environment.GetEnvironmentVariable("ORKIS_MODELS") is { Length: > 0 } modelSpecs)
+{
+    foreach (var spec in modelSpecs.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        var keyAndTarget = spec.Split('=', 2);
+        var providerAndModel = keyAndTarget.Length == 2 ? keyAndTarget[1].Split(':', 2) : [];
+        if (keyAndTarget.Length != 2 || providerAndModel.Length != 2)
+        {
+            Console.Error.WriteLine($"ORKIS_MODELS entry '{spec}' is not key=provider:model.");
+            return 1;
+        }
+
+        var providerApiKey = providerAndModel[0] switch
+        {
+            "anthropic" => anthropicKey,
+            "openai" => openAiKey,
+            _ => null,
+        };
+        if (string.IsNullOrEmpty(providerApiKey))
+        {
+            Console.Error.WriteLine($"ORKIS_MODELS entry '{spec}': no API key for provider '{providerAndModel[0]}'.");
+            return 1;
+        }
+
+        models.Add(new ModelRegistration(keyAndTarget[0], providerAndModel[0], providerAndModel[1], providerApiKey));
+    }
+}
+
 var runtimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
 var socketPath =
     Environment.GetEnvironmentVariable("ORKIS_SOCKET")
@@ -72,6 +103,7 @@ var settings = new DaemonSettings
     Provider = provider,
     ApiKey = selectedKey,
     Model = offline ? null : model,
+    Models = models,
     // Memory and retrieval need an embeddings endpoint (OpenAI has one; Anthropic
     // does not) — they stay off without it.
     EmbeddingModel =
@@ -100,6 +132,10 @@ if (settings.EmbeddingModel is not null && settings.CorpusDirectory is { Length:
 
 Console.WriteLine($"orkis daemon | listening on unix:{settings.SocketPath}");
 Console.WriteLine($"mode: {(offline ? "offline (scripted model)" : $"live ({provider}: {model})")}");
+if (models.Count > 0)
+{
+    Console.WriteLine($"models: {string.Join(", ", models.Select(m => $"{m.Key} ({m.Provider}: {m.ModelId})"))}");
+}
 Console.WriteLine($"sandbox: {sandbox} isolation + host execution (granted per approval)");
 Console.WriteLine($"supervision: queue (default) | yolo{(offline ? "" : " | ai")}");
 Console.WriteLine(

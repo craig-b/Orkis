@@ -58,6 +58,40 @@ public sealed class OrkisClientTests(DaemonFixture fixture) : IClassFixture<Daem
     }
 
     [Fact]
+    public async Task ModelKeyRoutesTheRunAndIsRecordedInItsEvents()
+    {
+        var accepted = await _client.StartRunAsync(
+            new StartRunRequest
+            {
+                Prompt = "Run the greeting command.",
+                SupervisorKey = "yolo",
+                Model = "alt",
+            }
+        );
+        await WaitForRunAsync(accepted.RunId, static r => !r.Active && r.Status == RunStatus.Completed);
+
+        var events = new List<RunEvent>();
+        await foreach (var runEvent in _client.StreamEventsAsync(accepted.RunId))
+        {
+            events.Add(runEvent);
+        }
+
+        var started = Assert.IsType<RunStartedEvent>(events[0]);
+        Assert.Equal("alt", started.ModelKey);
+    }
+
+    [Fact]
+    public async Task UnknownModelKeyIsRejectedUpFront()
+    {
+        var ex = await Assert.ThrowsAsync<OrkisApiException>(() =>
+            _client.StartRunAsync(new StartRunRequest { Prompt = "hi", Model = "nonsense" })
+        );
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, ex.StatusCode);
+        Assert.Contains("model", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task GlobalStreamMultiplexesEveryRun()
     {
         // Live-only stream: subscribe before starting the runs.

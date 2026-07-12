@@ -110,6 +110,30 @@ public static class DaemonApplication
                 .Build()
         );
 
+        // Additional models register under per-run keys — the keyed-supervisor
+        // pattern applied to chat clients. The unkeyed client above stays the default.
+        foreach (var model in settings.Models)
+        {
+            services.AddOrkisChatClient(
+                model.Key,
+                _ =>
+                {
+                    IChatClient keyedClient = model.Provider switch
+                    {
+                        "openai" => new OpenAIClient(model.ApiKey).GetChatClient(model.ModelId).AsIChatClient(),
+                        "anthropic" => new AnthropicClient(model.ApiKey).Messages,
+                        _ => throw new InvalidOperationException(
+                            $"Unknown provider '{model.Provider}' for model key '{model.Key}'."
+                        ),
+                    };
+                    return new ChatClientBuilder(keyedClient)
+                        .Use(static inner => new ResilientChatClient(inner))
+                        .ConfigureOptions(options => options.ModelId ??= model.ModelId)
+                        .Build();
+                }
+            );
+        }
+
         if (!settings.Offline)
         {
             // AI first-line review needs a live model; escalations land in the inbox.

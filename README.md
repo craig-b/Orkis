@@ -76,6 +76,11 @@ dotnet run --project src/Orkis.Host -- "Roll 3 dice and tell me the total."
 
 # ORKIS_PROVIDER=anthropic|openai and ORKIS_MODEL=<id> override the defaults.
 
+# Additional models register under per-run keys, selectable with orkis run --model
+# <key> (or AgentRunRequest.ModelKey) — the key is checkpointed, so a resumed run
+# reconnects to the same model:
+export ORKIS_MODELS="mini=openai:gpt-5-mini,sonnet=anthropic:claude-sonnet-5"
+
 # Unsupervised ("yolo") mode:
 dotnet run --project src/Orkis.Host -- --yolo --offline
 ```

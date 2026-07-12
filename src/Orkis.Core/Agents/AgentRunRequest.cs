@@ -37,4 +37,11 @@ public sealed record AgentRunRequest
     /// resumed run reconnects to the same supervision policy.
     /// </summary>
     public string SupervisorKey { get; init; } = SupervisorKeys.Default;
+
+    /// <summary>
+    /// Key of the registered chat client this run uses, or <see langword="null"/> for
+    /// the host's default. Checkpointed like the supervisor key, so a resumed run
+    /// reconnects to the same model.
+    /// </summary>
+    public string? ModelKey { get; init; }
 }

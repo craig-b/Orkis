@@ -20,6 +20,10 @@ var supervisorOption = new Option<string?>("--supervisor")
 {
     Description = "Supervisor key for the run: queue (default), yolo, or ai.",
 };
+var modelOption = new Option<string?>("--model")
+{
+    Description = "Registered model key for the run (default: the daemon's default model).",
+};
 var systemOption = new Option<string?>("--system") { Description = "Optional system prompt." };
 var maxTokensOption = new Option<long?>("--max-tokens") { Description = "Token budget for the run." };
 var maxToolCallsOption = new Option<int?>("--max-tool-calls") { Description = "Tool-call budget for the run." };
@@ -31,6 +35,7 @@ var detachOption = new Option<bool>("--detach", "-d")
 var runCommand = new Command("run", "Start a run and attach to its event stream.");
 runCommand.Arguments.Add(promptArgument);
 runCommand.Options.Add(supervisorOption);
+runCommand.Options.Add(modelOption);
 runCommand.Options.Add(systemOption);
 runCommand.Options.Add(maxTokensOption);
 runCommand.Options.Add(maxToolCallsOption);
@@ -47,6 +52,7 @@ runCommand.SetAction(
                         Prompt = parseResult.GetValue(promptArgument)!,
                         SystemPrompt = parseResult.GetValue(systemOption),
                         SupervisorKey = parseResult.GetValue(supervisorOption),
+                        Model = parseResult.GetValue(modelOption),
                         MaxTokens = parseResult.GetValue(maxTokensOption),
                         MaxToolCalls = parseResult.GetValue(maxToolCallsOption),
                     },

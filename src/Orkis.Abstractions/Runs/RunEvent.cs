@@ -35,6 +35,9 @@ public sealed record RunStartedEvent : RunEvent
     public required string Prompt { get; init; }
 
     public required string SupervisorKey { get; init; }
+
+    /// <summary>The run's registered model key, or <see langword="null"/> for the host default.</summary>
+    public string? ModelKey { get; init; }
 }
 
 /// <summary>A paused run picked up from its checkpoint.</summary>

@@ -36,6 +36,9 @@ public sealed record DaemonSettings
     /// <summary>Model id for live runs. Ignored when offline.</summary>
     public string? Model { get; init; }
 
+    /// <summary>Additional models registered under per-run keys (<c>run --model &lt;key&gt;</c>).</summary>
+    public IReadOnlyList<ModelRegistration> Models { get; init; } = [];
+
     /// <summary>
     /// Embedding model id, or <see langword="null"/> when the provider has no
     /// embeddings endpoint — memory and retrieval stay off without one.

@@ -25,6 +25,7 @@ public static class OrkisServiceCollectionExtensions
         services.TryAddSingleton<ICheckpointStore, InMemoryCheckpointStore>();
         services.TryAddSingleton<IApprovalInbox, InMemoryApprovalInbox>();
         services.TryAddSingleton<ISupervisorResolver, KeyedServiceSupervisorResolver>();
+        services.TryAddSingleton<Orkis.Clients.IChatClientResolver, Orkis.Clients.KeyedServiceChatClientResolver>();
         services.TryAddSingleton<ICostCalculator>(NullCostCalculator.Instance);
         services.TryAddSingleton<AgentRunner>();
         services.TryAddSingleton<RunRegistry>();
@@ -98,6 +99,26 @@ public static class OrkisServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(factory);
 
         services.AddKeyedSingleton<ISupervisor>(key, (provider, _) => factory(provider));
+        return services;
+    }
+
+    /// <summary>
+    /// Registers a chat client under <paramref name="key"/>, selectable per run via
+    /// <see cref="Orkis.Agents.AgentRunRequest.ModelKey"/>. The unkeyed
+    /// <see cref="Microsoft.Extensions.AI.IChatClient"/> registration stays the
+    /// default for runs that pick no model.
+    /// </summary>
+    public static IServiceCollection AddOrkisChatClient(
+        this IServiceCollection services,
+        string key,
+        Func<IServiceProvider, Microsoft.Extensions.AI.IChatClient> factory
+    )
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        ArgumentNullException.ThrowIfNull(factory);
+
+        services.AddKeyedSingleton<Microsoft.Extensions.AI.IChatClient>(key, (provider, _) => factory(provider));
         return services;
     }
 }
