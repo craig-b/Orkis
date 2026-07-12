@@ -56,11 +56,6 @@ The through-lines these ideas are meant to respect:
   motivating example). Currently blocked: enabling the property breaks `.slnx`
   solution-level restore on SDK 10.0.1xx ("Invalid framework identifier ''"); revisit
   on SDK updates.
-- **Resilience** `[idea]` — retry with backoff and jitter for transient model-call
-  failures (429s, 5xx, timeouts) as a delegating `IChatClient` middleware, so it
-  composes at the client-builder level rather than inside the runner; retried calls
-  still count against token/cost budgets. Tool-call retries stay the model's job —
-  it sees typed errors and decides.
 
 ## Tier 2 — Medium-term (design mostly clear, larger or dependent)
 

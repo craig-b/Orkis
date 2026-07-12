@@ -33,4 +33,7 @@ public static class OrkisTelemetry
 
     /// <summary>Histogram of run segment durations in seconds, tagged with <c>orkis.run.status</c>.</summary>
     public const string SegmentDurationInstrumentName = "orkis.agent.run.segment.duration";
+
+    /// <summary>Counter of model-call retries made by the resilience middleware.</summary>
+    public const string ModelRetriesInstrumentName = "orkis.model.retries";
 }

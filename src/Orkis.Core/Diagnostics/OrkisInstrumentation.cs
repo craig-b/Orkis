@@ -33,4 +33,10 @@ internal static class OrkisInstrumentation
         unit: "s",
         description: "Duration of agent run segments."
     );
+
+    public static readonly Counter<long> ModelRetries = Meter.CreateCounter<long>(
+        OrkisTelemetry.ModelRetriesInstrumentName,
+        unit: "{retry}",
+        description: "Model calls retried after transient failures."
+    );
 }

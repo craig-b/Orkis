@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenAI;
 using Orkis.Agents;
 using Orkis.Artifacts;
+using Orkis.Clients;
 using Orkis.Host;
 using Orkis.Runs;
 using Orkis.Sandboxing;
@@ -304,7 +305,12 @@ IChatClient providerClient = offline
     };
 
 services.AddSingleton(
-    new ChatClientBuilder(providerClient).ConfigureOptions(options => options.ModelId ??= model).Build()
+    new ChatClientBuilder(providerClient)
+        // Outermost: transient model-call failures retry with backoff and jitter,
+        // for every consumer of the client (agent loop, AI supervisor, reranker).
+        .Use(static inner => new ResilientChatClient(inner))
+        .ConfigureOptions(options => options.ModelId ??= model)
+        .Build()
 );
 
 await using var serviceProvider = services.BuildServiceProvider();
