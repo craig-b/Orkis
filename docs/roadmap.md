@@ -150,7 +150,14 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   overlaps API-mutated state — no reconciliation. The precursor is built:
   `GET /v1/capabilities` (and `orkis info`) enumerates registered models, supervisor
   keys, sandbox, tools, and memory/retrieval status, backed by `OrkisRegistrations`
-  since keyed services cannot be enumerated from the container.
+  since keyed services cannot be enumerated from the container. The daemon config
+  file (JSONC) is built for its first surface: `providers` (endpoint + credentials +
+  kind — `openai` kind + `baseUrl` covers any OpenAI-compatible endpoint like
+  OpenRouter or a local server) and `models` (a per-run key → provider + model id),
+  plus the default model and the embedding model; secrets inline or via
+  `apiKeyEnv`. Legacy env vars remain a fallback. Remaining: migrate the other
+  boot-only config (dirs, sandbox, socket, gateway) into the same file incrementally,
+  and the runtime-object APIs (`POST/DELETE /v1/mcp-servers`).
 - **Daemon clients + protocol growth** `[scaffold]` — the daemon itself is built
   (`Orkis.Daemon`, July 2026): a long-lived composition root owning the stateful side —
   run registry with checkpoint adoption on restart (`RunRegistry` over

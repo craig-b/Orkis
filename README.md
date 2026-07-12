@@ -77,11 +77,6 @@ dotnet run --project src/Orkis.Host -- "Roll 3 dice and tell me the total."
 
 # ORKIS_PROVIDER=anthropic|openai and ORKIS_MODEL=<id> override the defaults.
 
-# Additional models register under per-run keys, selectable with orkis run --model
-# <key> (or AgentRunRequest.ModelKey) — the key is checkpointed, so a resumed run
-# reconnects to the same model:
-export ORKIS_MODELS="mini=openai:gpt-5-mini,sonnet=anthropic:claude-sonnet-5"
-
 # Unsupervised ("yolo") mode:
 dotnet run --project src/Orkis.Host -- --yolo --offline
 ```
@@ -181,6 +176,17 @@ the two composition roots are interchangeable over shared state:
 ```sh
 dotnet run --project src/Orkis.Daemon -- --offline     # or live, with an API key
 ```
+
+**Providers and models** are declared in a JSONC config file — `$ORKIS_CONFIG`,
+else `$XDG_CONFIG_HOME/orkis/config.json`, else `~/.config/orkis/config.json` (see
+[docs/config.example.json](docs/config.example.json)). A *provider* is an endpoint
++ credentials + kind; a *model* is a per-run key pointing at a provider and its
+model id. `openai` kind with a `baseUrl` covers any OpenAI-compatible endpoint —
+OpenRouter, Together, Groq, a local Ollama/vLLM server, Azure. Secrets are inline
+(`apiKey`) or an env-var reference (`apiKeyEnv`). Without a config file, the daemon
+falls back to the legacy `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`ORKIS_MODEL`
+environment variables. `orkis run --model <key>` selects one; the key is
+checkpointed, so a resumed run reconnects to the same model.
 
 The `orkis` CLI is the thin client (`--socket` or `ORKIS_SOCKET` selects a daemon;
 the well-known path is the default). `orkis run` attaches to the run's event

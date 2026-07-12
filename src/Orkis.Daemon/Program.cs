@@ -1,35 +1,41 @@
 using Orkis.Daemon;
 using Orkis.Sandboxing;
 
-// The daemon is configured the same way as the CLI host — environment variables for
-// paths and providers — so the two composition roots stay interchangeable.
 var offline = args.Contains("--offline") || Environment.GetEnvironmentVariable("ORKIS_OFFLINE") == "1";
-
-var anthropicKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
-var openAiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-var provider = Environment.GetEnvironmentVariable("ORKIS_PROVIDER")?.ToLowerInvariant();
-provider ??=
-    !string.IsNullOrEmpty(anthropicKey) ? "anthropic"
-    : !string.IsNullOrEmpty(openAiKey) ? "openai"
-    : null;
-
-var selectedKey = provider switch
-{
-    "anthropic" => anthropicKey,
-    "openai" => openAiKey,
-    _ => null,
-};
-if (!offline && string.IsNullOrEmpty(selectedKey))
-{
-    Console.Error.WriteLine("No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY for live runs");
-    Console.Error.WriteLine("(ORKIS_PROVIDER=anthropic|openai picks explicitly), or pass --offline.");
-    return 1;
-}
-
-var model =
-    Environment.GetEnvironmentVariable("ORKIS_MODEL") ?? (provider == "openai" ? "gpt-5-mini" : "claude-sonnet-5");
-
 var dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "orkis");
+
+// Models come from the config file (JSONC providers + models) when present, otherwise
+// the legacy environment variables. Offline uses the scripted model and needs neither.
+IReadOnlyList<ResolvedModel> models = [];
+string? defaultModelKey = null;
+ResolvedModel? embedding = null;
+if (!offline)
+{
+    try
+    {
+        if (OrkisConfig.Load() is { } config)
+        {
+            (models, defaultModelKey, embedding) = (config.Models, config.DefaultModelKey, config.Embedding);
+        }
+        else if (LegacyModelsFromEnvironment() is { } legacy)
+        {
+            (models, defaultModelKey, embedding) = legacy;
+        }
+    }
+    catch (OrkisConfigException ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+        return 1;
+    }
+
+    if (models.Count == 0)
+    {
+        Console.Error.WriteLine($"No models configured. Create a config file (providers + models) at:");
+        Console.Error.WriteLine($"  {OrkisConfig.DefaultPath()}");
+        Console.Error.WriteLine("or set ANTHROPIC_API_KEY / OPENAI_API_KEY for a default, or pass --offline.");
+        return 1;
+    }
+}
 
 // Sandbox: strongest available wins, overridable with ORKIS_SANDBOX=firecracker|bubblewrap|process.
 var firecrackerHome =
@@ -54,37 +60,6 @@ if (sandbox == "firecracker" && !firecrackerReady)
     return 1;
 }
 
-// ORKIS_MODELS registers additional models selectable per run (orkis run --model <key>):
-//   ORKIS_MODELS="mini=openai:gpt-5-mini,sonnet=anthropic:claude-sonnet-5"
-var models = new List<ModelRegistration>();
-if (!offline && Environment.GetEnvironmentVariable("ORKIS_MODELS") is { Length: > 0 } modelSpecs)
-{
-    foreach (var spec in modelSpecs.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-    {
-        var keyAndTarget = spec.Split('=', 2);
-        var providerAndModel = keyAndTarget.Length == 2 ? keyAndTarget[1].Split(':', 2) : [];
-        if (keyAndTarget.Length != 2 || providerAndModel.Length != 2)
-        {
-            Console.Error.WriteLine($"ORKIS_MODELS entry '{spec}' is not key=provider:model.");
-            return 1;
-        }
-
-        var providerApiKey = providerAndModel[0] switch
-        {
-            "anthropic" => anthropicKey,
-            "openai" => openAiKey,
-            _ => null,
-        };
-        if (string.IsNullOrEmpty(providerApiKey))
-        {
-            Console.Error.WriteLine($"ORKIS_MODELS entry '{spec}': no API key for provider '{providerAndModel[0]}'.");
-            return 1;
-        }
-
-        models.Add(new ModelRegistration(keyAndTarget[0], providerAndModel[0], providerAndModel[1], providerApiKey));
-    }
-}
-
 var runtimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
 var socketPath =
     Environment.GetEnvironmentVariable("ORKIS_SOCKET")
@@ -101,16 +76,9 @@ var settings = new DaemonSettings
     ScheduleDirectory = Environment.GetEnvironmentVariable("ORKIS_SCHEDULE_DIR") ?? Path.Combine(dataRoot, "schedules"),
     WorkspaceKey = Environment.GetEnvironmentVariable("ORKIS_WORKSPACE") ?? "default",
     Offline = offline,
-    Provider = provider,
-    ApiKey = selectedKey,
-    Model = offline ? null : model,
     Models = models,
-    // Memory and retrieval need an embeddings endpoint (OpenAI has one; Anthropic
-    // does not) — they stay off without it.
-    EmbeddingModel =
-        !offline && provider == "openai"
-            ? Environment.GetEnvironmentVariable("ORKIS_EMBEDDING_MODEL") ?? "text-embedding-3-small"
-            : null,
+    DefaultModelKey = defaultModelKey,
+    Embedding = embedding,
     MemoryDatabasePath = Environment.GetEnvironmentVariable("ORKIS_MEMORY_DB") ?? Path.Combine(dataRoot, "memory.db"),
     CorpusDirectory = Environment.GetEnvironmentVariable("ORKIS_CORPUS_DIR"),
     CorpusDatabasePath = Path.Combine(dataRoot, "corpus.db"),
@@ -123,7 +91,7 @@ var settings = new DaemonSettings
 
 var app = await DaemonApplication.CreateAsync(settings);
 
-if (settings.EmbeddingModel is not null && settings.CorpusDirectory is { Length: > 0 } corpusDirectory)
+if (settings.Embedding is not null && settings.CorpusDirectory is { Length: > 0 } corpusDirectory)
 {
     var (documents, chunks) = await app
         .Services.GetRequiredService<Orkis.Retrieval.DirectoryCorpusLoader>()
@@ -132,17 +100,29 @@ if (settings.EmbeddingModel is not null && settings.CorpusDirectory is { Length:
 }
 
 Console.WriteLine($"orkis daemon | listening on unix:{settings.SocketPath}");
-Console.WriteLine($"mode: {(offline ? "offline (scripted model)" : $"live ({provider}: {model})")}");
-if (models.Count > 0)
+if (offline)
 {
-    Console.WriteLine($"models: {string.Join(", ", models.Select(m => $"{m.Key} ({m.Provider}: {m.ModelId})"))}");
+    Console.WriteLine("mode: offline (scripted model)");
+}
+else
+{
+    Console.WriteLine(
+        "models: "
+            + string.Join(
+                ", ",
+                models.Select(m =>
+                    $"{m.Key}{(m.Key == defaultModelKey ? "*" : "")} ({m.Kind.ToString().ToLowerInvariant()}: {m.ModelId})"
+                )
+            )
+            + " (* = default)"
+    );
 }
 Console.WriteLine($"sandbox: {sandbox} isolation + host execution (granted per approval)");
 Console.WriteLine($"supervision: queue (default) | yolo{(offline ? "" : " | ai")}");
 Console.WriteLine(
-    settings.EmbeddingModel is null
-        ? "memory: off (no embeddings endpoint for this provider)"
-        : $"memory: on ({settings.EmbeddingModel}){(settings.CorpusDirectory is null ? "" : " + corpus retrieval")}"
+    settings.Embedding is null
+        ? "memory: off (no embedding model configured)"
+        : $"memory: on ({settings.Embedding.ModelId}){(settings.CorpusDirectory is null ? "" : " + corpus retrieval")}"
 );
 if (app.Services.GetService<Orkis.Tools.McpToolSet>() is { } mcpToolSet)
 {
@@ -156,3 +136,75 @@ Console.WriteLine($"data: {dataRoot}");
 
 await app.RunAsync();
 return 0;
+
+// Legacy provider config: a default model from ANTHROPIC_API_KEY / OPENAI_API_KEY (or
+// ORKIS_PROVIDER + ORKIS_MODEL), additional models from ORKIS_MODELS, and an OpenAI
+// embedding model — used only when no config file exists. Returns null when no key is
+// set. Throws OrkisConfigException on a malformed ORKIS_MODELS entry.
+static (IReadOnlyList<ResolvedModel>, string?, ResolvedModel?)? LegacyModelsFromEnvironment()
+{
+    var anthropicKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
+    var openAiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+    var provider =
+        Environment.GetEnvironmentVariable("ORKIS_PROVIDER")?.ToLowerInvariant()
+        ?? (
+            !string.IsNullOrEmpty(anthropicKey) ? "anthropic"
+            : !string.IsNullOrEmpty(openAiKey) ? "openai"
+            : null
+        );
+    var key = provider switch
+    {
+        "anthropic" => anthropicKey,
+        "openai" => openAiKey,
+        _ => null,
+    };
+    if (string.IsNullOrEmpty(key))
+    {
+        return null;
+    }
+
+    var kind = provider == "openai" ? ProviderKind.OpenAI : ProviderKind.Anthropic;
+    var modelId =
+        Environment.GetEnvironmentVariable("ORKIS_MODEL") ?? (provider == "openai" ? "gpt-5-mini" : "claude-sonnet-5");
+    var list = new List<ResolvedModel> { new("default", kind, null, key, modelId) };
+
+    if (Environment.GetEnvironmentVariable("ORKIS_MODELS") is { Length: > 0 } specs)
+    {
+        foreach (var spec in specs.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var kv = spec.Split('=', 2);
+            var pm = kv.Length == 2 ? kv[1].Split(':', 2) : [];
+            if (kv.Length != 2 || pm.Length != 2)
+            {
+                throw new OrkisConfigException($"ORKIS_MODELS entry '{spec}' is not key=provider:model.");
+            }
+
+            var modelKey = pm[0] switch
+            {
+                "anthropic" => anthropicKey,
+                "openai" => openAiKey,
+                _ => null,
+            };
+            if (string.IsNullOrEmpty(modelKey))
+            {
+                throw new OrkisConfigException($"ORKIS_MODELS entry '{spec}': no API key for provider '{pm[0]}'.");
+            }
+
+            list.Add(
+                new(kv[0], pm[0] == "openai" ? ProviderKind.OpenAI : ProviderKind.Anthropic, null, modelKey, pm[1])
+            );
+        }
+    }
+
+    var embedding = openAiKey is { Length: > 0 }
+        ? new ResolvedModel(
+            "embedding",
+            ProviderKind.OpenAI,
+            null,
+            openAiKey,
+            Environment.GetEnvironmentVariable("ORKIS_EMBEDDING_MODEL") ?? "text-embedding-3-small"
+        )
+        : null;
+
+    return (list, "default", embedding);
+}

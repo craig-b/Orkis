@@ -34,23 +34,20 @@ public sealed record DaemonSettings
     /// <summary>Use the scripted offline model instead of a live provider.</summary>
     public bool Offline { get; init; }
 
-    /// <summary>Live model provider: <c>anthropic</c> or <c>openai</c>. Ignored when offline.</summary>
-    public string? Provider { get; init; }
+    /// <summary>
+    /// Resolved models, each selectable per run (<c>run --model &lt;key&gt;</c>). Empty
+    /// when offline. Built from the config file or legacy environment variables.
+    /// </summary>
+    public IReadOnlyList<ResolvedModel> Models { get; init; } = [];
 
-    /// <summary>API key for the live provider. Ignored when offline.</summary>
-    public string? ApiKey { get; init; }
-
-    /// <summary>Model id for live runs. Ignored when offline.</summary>
-    public string? Model { get; init; }
-
-    /// <summary>Additional models registered under per-run keys (<c>run --model &lt;key&gt;</c>).</summary>
-    public IReadOnlyList<ModelRegistration> Models { get; init; } = [];
+    /// <summary>Key (in <see cref="Models"/>) of the model a run uses when it names none.</summary>
+    public string? DefaultModelKey { get; init; }
 
     /// <summary>
-    /// Embedding model id, or <see langword="null"/> when the provider has no
-    /// embeddings endpoint — memory and retrieval stay off without one.
+    /// The embedding model, or <see langword="null"/> when none is configured — memory
+    /// and retrieval stay off without one. Must be OpenAI-kind.
     /// </summary>
-    public string? EmbeddingModel { get; init; }
+    public ResolvedModel? Embedding { get; init; }
 
     /// <summary>SQLite database for agent memory; used when embeddings are on.</summary>
     public string? MemoryDatabasePath { get; init; }

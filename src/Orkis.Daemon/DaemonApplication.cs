@@ -98,41 +98,29 @@ public static class DaemonApplication
         services.AddOrkisSupervisor("queue", CreateQueueSupervisor);
         services.AddOrkisSupervisor<AutoApproveSupervisor>("yolo");
 
-        IChatClient providerClient = settings.Offline
-            ? new OfflineChatClient()
-            : settings.Provider switch
-            {
-                "openai" => new OpenAIClient(settings.ApiKey).GetChatClient(settings.Model!).AsIChatClient(),
-                _ => new AnthropicClient(settings.ApiKey).Messages,
-            };
+        // The default (unkeyed) client is the offline script, or the model marked
+        // default. Every configured model also registers under its own key, so a run
+        // selects one with AgentRunRequest.ModelKey.
+        var defaultModel = settings.Offline
+            ? null
+            : settings.Models.FirstOrDefault(m => m.Key == settings.DefaultModelKey)
+                ?? (settings.Models.Count > 0 ? settings.Models[0] : null);
         services.AddSingleton(
-            new ChatClientBuilder(providerClient)
+            new ChatClientBuilder(defaultModel is null ? new OfflineChatClient() : BuildChatClient(defaultModel))
                 .Use(static inner => new ResilientChatClient(inner))
-                .ConfigureOptions(options => options.ModelId ??= settings.Model)
+                .ConfigureOptions(options => options.ModelId ??= defaultModel?.ModelId)
                 .Build()
         );
 
-        // Additional models register under per-run keys — the keyed-supervisor
-        // pattern applied to chat clients. The unkeyed client above stays the default.
         foreach (var model in settings.Models)
         {
             services.AddOrkisChatClient(
                 model.Key,
                 _ =>
-                {
-                    IChatClient keyedClient = model.Provider switch
-                    {
-                        "openai" => new OpenAIClient(model.ApiKey).GetChatClient(model.ModelId).AsIChatClient(),
-                        "anthropic" => new AnthropicClient(model.ApiKey).Messages,
-                        _ => throw new InvalidOperationException(
-                            $"Unknown provider '{model.Provider}' for model key '{model.Key}'."
-                        ),
-                    };
-                    return new ChatClientBuilder(keyedClient)
+                    new ChatClientBuilder(BuildChatClient(model))
                         .Use(static inner => new ResilientChatClient(inner))
                         .ConfigureOptions(options => options.ModelId ??= model.ModelId)
-                        .Build();
-                }
+                        .Build()
             );
         }
 
@@ -157,10 +145,10 @@ public static class DaemonApplication
         // Memory and retrieval need an embeddings endpoint; with one configured, the
         // SQLite memory store plus save/search tools come on, and a corpus directory
         // additionally enables search_corpus (reranked with the chat model).
-        if (!settings.Offline && settings.EmbeddingModel is { Length: > 0 } embeddingModel)
+        if (!settings.Offline && settings.Embedding is { } embedding)
         {
             services.AddSingleton(
-                new OpenAIClient(settings.ApiKey).GetEmbeddingClient(embeddingModel).AsIEmbeddingGenerator()
+                BuildOpenAIClient(embedding).GetEmbeddingClient(embedding.ModelId).AsIEmbeddingGenerator()
             );
             services.AddOrkisSqliteMemoryStore(options =>
                 options.DatabasePath =
@@ -199,12 +187,10 @@ public static class DaemonApplication
             new DaemonInfo
             {
                 Sandbox = settings.Sandbox,
-                DefaultModel = settings.Model,
-                MemoryEnabled = !settings.Offline && settings.EmbeddingModel is { Length: > 0 },
+                DefaultModel = defaultModel?.ModelId,
+                MemoryEnabled = !settings.Offline && settings.Embedding is not null,
                 CorpusEnabled =
-                    !settings.Offline
-                    && settings.EmbeddingModel is { Length: > 0 }
-                    && settings.CorpusDirectory is { Length: > 0 },
+                    !settings.Offline && settings.Embedding is not null && settings.CorpusDirectory is { Length: > 0 },
             }
         );
         services.AddSingleton<RunExecutor>();
@@ -226,6 +212,26 @@ public static class DaemonApplication
         app.MapOrkisDaemon();
         return app;
     }
+
+    private static IChatClient BuildChatClient(ResolvedModel model) =>
+        model.Kind switch
+        {
+            ProviderKind.Anthropic => new AnthropicClient(model.ApiKey).Messages,
+            ProviderKind.OpenAI => BuildOpenAIClient(model).GetChatClient(model.ModelId).AsIChatClient(),
+            _ => throw new InvalidOperationException($"Unknown provider kind for model '{model.Key}'."),
+        };
+
+    /// <summary>
+    /// An OpenAI client honoring a custom base URL, so OpenAI-compatible providers
+    /// (OpenRouter, a local server, …) work through the same path as OpenAI itself.
+    /// </summary>
+    private static OpenAIClient BuildOpenAIClient(ResolvedModel model) =>
+        model.BaseUrl is { Length: > 0 } baseUrl
+            ? new OpenAIClient(
+                new System.ClientModel.ApiKeyCredential(model.ApiKey),
+                new OpenAIClientOptions { Endpoint = new Uri(baseUrl) }
+            )
+            : new OpenAIClient(model.ApiKey);
 
     private static ISupervisor CreateQueueSupervisor(IServiceProvider provider) =>
         new ThresholdSupervisor(

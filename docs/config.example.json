@@ -1,0 +1,31 @@
+{
+  // Orkis daemon config (JSONC — comments and trailing commas allowed).
+  // Location: $ORKIS_CONFIG, else $XDG_CONFIG_HOME/orkis/config.json, else
+  // ~/.config/orkis/config.json. When absent, the daemon falls back to the legacy
+  // ANTHROPIC_API_KEY / OPENAI_API_KEY / ORKIS_MODEL environment variables.
+
+  // A provider is an endpoint + credentials speaking a given API kind. "openai" with
+  // a baseUrl covers any OpenAI-compatible endpoint (OpenRouter, Together, Groq, a
+  // local Ollama / vLLM server, Azure, …). Secrets are inline (apiKey) or a reference
+  // to an environment variable (apiKeyEnv) to keep them out of the file.
+  "providers": {
+    "anthropic":  { "kind": "anthropic", "apiKeyEnv": "ANTHROPIC_API_KEY" },
+    "openai":     { "kind": "openai",     "apiKeyEnv": "OPENAI_API_KEY" },
+    "openrouter": { "kind": "openai", "baseUrl": "https://openrouter.ai/api/v1", "apiKeyEnv": "OPENROUTER_KEY" },
+    "local":      { "kind": "openai", "baseUrl": "http://localhost:11434/v1", "apiKey": "ollama" },
+  },
+
+  // A model is a per-run key (orkis run --model <key>) pointing at a provider + model id.
+  "models": {
+    "sonnet":   { "provider": "anthropic",  "model": "claude-sonnet-5" },
+    "mini":     { "provider": "openai",     "model": "gpt-5-mini" },
+    "deepseek": { "provider": "openrouter", "model": "deepseek/deepseek-chat" },
+    "qwen":     { "provider": "local",      "model": "qwen2.5" },
+  },
+
+  // The model a run uses when it names none.
+  "defaultModel": "sonnet",
+
+  // Embeddings power memory and corpus retrieval; the provider must be OpenAI-kind.
+  "embedding": { "provider": "openai", "model": "text-embedding-3-small" },
+}
