@@ -302,6 +302,27 @@ stream through nginx, disable proxy buffering and use HTTP/1.1 upstream:
 location /v1/events { proxy_pass http://gateway; proxy_buffering off; proxy_http_version 1.1; }
 ```
 
+## Publishing
+
+The three deployables publish as **self-contained single-file binaries** — each carries
+its own runtime, so the target host needs nothing installed. Pass a runtime identifier;
+everything else (single-file, ReadyToRun, invariant globalization, and trimming for the
+CLI) comes from `Publish.props`:
+
+```sh
+dotnet publish src/Orkis.Cli    -c Release -r linux-x64   # orkis         ~31 MB (trimmed + R2R)
+dotnet publish src/Orkis.Daemon -c Release -r linux-x64   # Orkis.Daemon  ~162 MB
+dotnet publish src/Orkis.Web    -c Release -r linux-x64   # Orkis.Web     ~116 MB
+```
+
+Swap the RID for another target (`linux-arm64`, `osx-arm64`, `win-x64`, …). The CLI is
+trimmed — its JSON goes through a source-generated context (`OrkisJsonContext`), so no
+reflection metadata is stripped — cutting it to roughly a quarter of an untrimmed
+self-contained build. The daemon and gateway are not trimmed: ASP.NET plus the model
+SDKs are not trim-safe, and as long-lived processes they gain little from it. All of this
+is gated on the RID being supplied, so `dotnet build`, `dotnet run`, and `dotnet test`
+are untouched.
+
 ## Development
 
 Formatting is enforced in CI with [CSharpier](https://csharpier.com). Enable the

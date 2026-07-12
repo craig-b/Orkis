@@ -1,0 +1,20 @@
+<Project>
+  <!--
+    Publish tuning for the deployable executables (CLI, daemon, gateway), imported by
+    each. Everything is gated on a RuntimeIdentifier being supplied, so `dotnet build`,
+    `dotnet run`, and the test suite are entirely unaffected — the optimizations engage
+    only for `dotnet publish -r <rid>` (e.g. linux-x64, linux-arm64, osx-arm64, win-x64).
+    Self-contained by default: the binary carries its own runtime, so the target host
+    needs nothing installed. See the Publishing section of the README.
+  -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <!-- Fold native deps (e.g. e_sqlite3) into the single file; they self-extract at start. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- No ICU: the code is invariant-culture throughout, so drop the globalization data. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+</Project>

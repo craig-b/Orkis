@@ -35,6 +35,7 @@
         "resolved": "10.0.7",
         "contentHash": "Z6mfFEaFcwCfSboxJwOLfu7/31npCY9q70WUamHW/vRQhDvBKOT4Vf9YkZj5J6hLvJpb0oDEYfHunQZj0xxvKw=="
       }
-    }
+    },
+    "net10.0/linux-x64": {}
   }
 }
