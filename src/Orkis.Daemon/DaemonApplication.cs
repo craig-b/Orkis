@@ -1,4 +1,6 @@
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Anthropic.SDK;
@@ -43,8 +45,26 @@ public static class DaemonApplication
 
         PrepareSocket(settings.SocketPath);
 
+        if (settings.ListenUrl is { Length: > 0 } && string.IsNullOrEmpty(settings.BearerToken))
+        {
+            throw new InvalidOperationException(
+                "A TCP listener requires a bearer token; set one, or listen on the Unix socket only."
+            );
+        }
+
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.ConfigureKestrel(kestrel => kestrel.ListenUnixSocket(settings.SocketPath));
+        builder.WebHost.ConfigureKestrel(kestrel =>
+        {
+            kestrel.ListenUnixSocket(settings.SocketPath);
+            if (settings.ListenUrl is { Length: > 0 } listenUrl)
+            {
+                var endpoint = new Uri(listenUrl);
+                kestrel.Listen(
+                    endpoint.Host == "0.0.0.0" ? System.Net.IPAddress.Any : System.Net.IPAddress.Parse(endpoint.Host),
+                    endpoint.Port
+                );
+            }
+        });
         builder.Services.ConfigureHttpJsonOptions(static options =>
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase))
         );
@@ -232,6 +252,38 @@ public static class DaemonApplication
 
         var app = builder.Build();
         app.Lifetime.ApplicationStarted.Register(() => TightenSocketPermissions(settings.SocketPath));
+
+        // Unix-socket connections carry no remote address — file permissions are
+        // their authentication. Anything arriving over TCP must present the token.
+        if (settings.BearerToken is { Length: > 0 } bearerToken)
+        {
+            var expected = Encoding.UTF8.GetBytes(bearerToken);
+            app.Use(
+                (context, next) =>
+                {
+                    if (context.Connection.RemoteIpAddress is null)
+                    {
+                        return next(context);
+                    }
+
+                    var authorization = context.Request.Headers.Authorization.ToString();
+                    if (
+                        authorization.StartsWith("Bearer ", StringComparison.Ordinal)
+                        && CryptographicOperations.FixedTimeEquals(
+                            Encoding.UTF8.GetBytes(authorization["Bearer ".Length..]),
+                            expected
+                        )
+                    )
+                    {
+                        return next(context);
+                    }
+
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    return context.Response.WriteAsJsonAsync(new { error = "A bearer token is required over TCP." });
+                }
+            );
+        }
+
         app.MapOrkisDaemon();
         return app;
     }

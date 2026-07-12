@@ -7,12 +7,20 @@ using Spectre.Console;
 
 var socketOption = new Option<string?>("--socket")
 {
-    Description = "The daemon's Unix socket (default: ORKIS_SOCKET, then the well-known path).",
+    Description =
+        "The daemon endpoint: a Unix socket path or an http(s):// URL "
+        + "(default: ORKIS_HOST, then ORKIS_SOCKET, then the well-known path).",
+    Recursive = true,
+};
+var tokenOption = new Option<string?>("--token")
+{
+    Description = "Bearer token for TCP endpoints (default: ORKIS_TOKEN).",
     Recursive = true,
 };
 
 var root = new RootCommand("Thin client for the Orkis daemon.");
 root.Options.Add(socketOption);
+root.Options.Add(tokenOption);
 
 // run --------------------------------------------------------------------------
 var promptArgument = new Argument<string>("prompt") { Description = "The prompt the agent should act on." };
@@ -367,7 +375,7 @@ return await root.Parse(args).InvokeAsync();
 
 async Task<int> WithClient(ParseResult parseResult, Func<OrkisClient, Task<int>> action)
 {
-    using var client = new OrkisClient(parseResult.GetValue(socketOption));
+    using var client = new OrkisClient(parseResult.GetValue(socketOption), parseResult.GetValue(tokenOption));
     try
     {
         return await action(client);
@@ -381,7 +389,7 @@ async Task<int> WithClient(ParseResult parseResult, Func<OrkisClient, Task<int>>
     {
         AnsiConsole.MarkupLine(
             $"[red]error:[/] cannot reach the daemon "
-                + $"([dim]{OrkisEndpoint.ResolveSocketPath(parseResult.GetValue(socketOption)).EscapeMarkup()}[/]): "
+                + $"([dim]{OrkisEndpoint.Resolve(parseResult.GetValue(socketOption)).EscapeMarkup()}[/]): "
                 + ex.Message.EscapeMarkup()
         );
         AnsiConsole.MarkupLine("[dim]is it running? start it with: dotnet run --project src/Orkis.Daemon[/]");

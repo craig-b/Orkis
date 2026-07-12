@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -20,38 +21,53 @@ public sealed class OrkisClient : IDisposable
     private readonly HttpClient _http;
 
     /// <summary>
-    /// Connects to the daemon at <paramref name="socketPath"/>, or the resolved
-    /// default endpoint when omitted (see <see cref="OrkisEndpoint.ResolveSocketPath"/>).
+    /// Connects to the daemon at <paramref name="endpoint"/> — a Unix socket path, or
+    /// an <c>http(s)://</c> URL for a bearer-token TCP listener — or the resolved
+    /// default when omitted (see <see cref="OrkisEndpoint.Resolve"/>). The token
+    /// defaults to <c>ORKIS_TOKEN</c> and rides every request over TCP.
     /// </summary>
-    public OrkisClient(string? socketPath = null)
+    public OrkisClient(string? endpoint = null, string? bearerToken = null)
     {
-        var resolved = OrkisEndpoint.ResolveSocketPath(socketPath);
-        _http = new HttpClient(
-            new SocketsHttpHandler
-            {
-                ConnectCallback = async (_, cancellationToken) =>
-                {
-                    var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-                    try
-                    {
-                        await socket
-                            .ConnectAsync(new UnixDomainSocketEndPoint(resolved), cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                        socket.Dispose();
-                        throw;
-                    }
-
-                    return new NetworkStream(socket, ownsSocket: true);
-                },
-            }
-        )
+        var resolved = OrkisEndpoint.Resolve(endpoint);
+        if (OrkisEndpoint.IsHttp(resolved))
         {
-            // The authority is unused over a Unix socket; it just anchors relative URIs.
-            BaseAddress = new Uri("http://orkis"),
-        };
+            _http = new HttpClient { BaseAddress = new Uri(resolved) };
+        }
+        else
+        {
+            _http = new HttpClient(
+                new SocketsHttpHandler
+                {
+                    ConnectCallback = async (_, cancellationToken) =>
+                    {
+                        var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                        try
+                        {
+                            await socket
+                                .ConnectAsync(new UnixDomainSocketEndPoint(resolved), cancellationToken)
+                                .ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            socket.Dispose();
+                            throw;
+                        }
+
+                        return new NetworkStream(socket, ownsSocket: true);
+                    },
+                }
+            )
+            {
+                // The authority is unused over a Unix socket; it just anchors relative URIs.
+                BaseAddress = new Uri("http://orkis"),
+            };
+        }
+
+        var token = bearerToken ?? Environment.GetEnvironmentVariable("ORKIS_TOKEN");
+        if (!string.IsNullOrEmpty(token))
+        {
+            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
     }
 
     /// <summary>Checks the daemon is reachable and healthy.</summary>

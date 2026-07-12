@@ -85,6 +85,32 @@ if (!offline && Environment.GetEnvironmentVariable("ORKIS_MODELS") is { Length: 
     }
 }
 
+// ORKIS_LISTEN adds a bearer-token-authenticated TCP endpoint for remote clients
+// (e.g. "http://0.0.0.0:7433"). The token comes from ORKIS_TOKEN, or is generated
+// once and persisted owner-only in the data root. TLS termination is a proxy's job.
+var listenUrl = Environment.GetEnvironmentVariable("ORKIS_LISTEN");
+var bearerToken = Environment.GetEnvironmentVariable("ORKIS_TOKEN");
+if (!string.IsNullOrEmpty(listenUrl) && string.IsNullOrEmpty(bearerToken))
+{
+    var tokenPath = Path.Combine(dataRoot, "token");
+    if (File.Exists(tokenPath))
+    {
+        bearerToken = (await File.ReadAllTextAsync(tokenPath)).Trim();
+    }
+    else
+    {
+        bearerToken = Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        Directory.CreateDirectory(dataRoot);
+        await File.WriteAllTextAsync(tokenPath, bearerToken + "\n");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(tokenPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    Console.WriteLine($"token: generated and persisted at {tokenPath} (set ORKIS_TOKEN to override)");
+}
+
 var runtimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
 var socketPath =
     Environment.GetEnvironmentVariable("ORKIS_SOCKET")
@@ -118,6 +144,8 @@ var settings = new DaemonSettings
     FirecrackerRootfsPath = firecrackerRootfs,
     FirecrackerEgress = Environment.GetEnvironmentVariable("ORKIS_NETWORK")?.ToLowerInvariant() == "egress",
     McpServer = Environment.GetEnvironmentVariable("ORKIS_MCP_SERVER"),
+    ListenUrl = listenUrl,
+    BearerToken = bearerToken,
 };
 
 var app = await DaemonApplication.CreateAsync(settings);
@@ -130,7 +158,10 @@ if (settings.EmbeddingModel is not null && settings.CorpusDirectory is { Length:
     Console.WriteLine($"corpus: indexed {documents} document(s) as {chunks} chunk(s) from {corpusDirectory}");
 }
 
-Console.WriteLine($"orkis daemon | listening on unix:{settings.SocketPath}");
+Console.WriteLine(
+    $"orkis daemon | listening on unix:{settings.SocketPath}"
+        + (listenUrl is { Length: > 0 } ? $" and {listenUrl} (bearer token required)" : "")
+);
 Console.WriteLine($"mode: {(offline ? "offline (scripted model)" : $"live ({provider}: {model})")}");
 if (models.Count > 0)
 {

@@ -222,7 +222,12 @@ curl -N --unix-socket "$SOCK" "http://d/v1/runs/<run>/events?follow=true"
 ```
 
 Access control is the socket itself (owner-only permissions); the daemon refuses
-to start when another instance already listens on its socket.
+to start when another instance already listens on its socket. For remote clients,
+`ORKIS_LISTEN=http://0.0.0.0:7433` adds a TCP endpoint requiring a bearer token on
+every request — from `ORKIS_TOKEN`, or generated once and persisted owner-only in
+the data root. Clients pass a URL instead of a socket path (`--socket
+http://host:7433 --token …`, or `ORKIS_HOST`/`ORKIS_TOKEN`). Terminate TLS in a
+reverse proxy; the daemon speaks plain HTTP.
 
 ## Development
 

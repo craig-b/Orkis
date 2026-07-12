@@ -4,15 +4,22 @@ namespace Orkis.Client;
 public static class OrkisEndpoint
 {
     /// <summary>
-    /// The daemon socket to use: an explicit path wins, then <c>ORKIS_SOCKET</c>, then
-    /// the well-known default (<c>$XDG_RUNTIME_DIR/orkis/orkis.sock</c>, falling back
-    /// to the local application data directory) — matching the daemon's own resolution.
+    /// The daemon endpoint to use: an explicit value wins (a socket path, or an
+    /// <c>http(s)://</c> URL for a bearer-token TCP listener), then <c>ORKIS_HOST</c>
+    /// (URL), then <c>ORKIS_SOCKET</c> (path), then the well-known default socket
+    /// (<c>$XDG_RUNTIME_DIR/orkis/orkis.sock</c>, falling back to the local
+    /// application data directory) — matching the daemon's own resolution.
     /// </summary>
-    public static string ResolveSocketPath(string? explicitPath = null)
+    public static string Resolve(string? explicitEndpoint = null)
     {
-        if (!string.IsNullOrEmpty(explicitPath))
+        if (!string.IsNullOrEmpty(explicitEndpoint))
         {
-            return explicitPath;
+            return explicitEndpoint;
+        }
+
+        if (Environment.GetEnvironmentVariable("ORKIS_HOST") is { Length: > 0 } host)
+        {
+            return host;
         }
 
         if (Environment.GetEnvironmentVariable("ORKIS_SOCKET") is { Length: > 0 } fromEnvironment)
@@ -26,4 +33,9 @@ public static class OrkisEndpoint
             : Path.Combine(runtimeDir, "orkis");
         return Path.Combine(baseDir, "orkis.sock");
     }
+
+    /// <summary>Whether the endpoint is a TCP URL rather than a Unix socket path.</summary>
+    public static bool IsHttp(string endpoint) =>
+        endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+        || endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
 }

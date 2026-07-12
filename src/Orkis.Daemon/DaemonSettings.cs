@@ -9,6 +9,16 @@ public sealed record DaemonSettings
     /// <summary>Path of the Unix domain socket the daemon listens on.</summary>
     public required string SocketPath { get; init; }
 
+    /// <summary>
+    /// Optional additional TCP endpoint (e.g. <c>http://0.0.0.0:7433</c>) for remote
+    /// clients. Requires <see cref="BearerToken"/>: the socket is authenticated by
+    /// file permissions, TCP by the token. TLS termination is a reverse proxy's job.
+    /// </summary>
+    public string? ListenUrl { get; init; }
+
+    /// <summary>Token required (as <c>Authorization: Bearer …</c>) on every TCP request.</summary>
+    public string? BearerToken { get; init; }
+
     /// <summary>Root directory for run checkpoints.</summary>
     public required string CheckpointDirectory { get; init; }
 
