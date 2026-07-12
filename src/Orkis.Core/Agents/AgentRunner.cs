@@ -167,6 +167,7 @@ public sealed class AgentRunner
             Budget = request.Budget,
             SupervisorKey = request.SupervisorKey,
             ModelKey = request.ModelKey,
+            Conversational = request.Conversational,
             CoreToolNames = [.. request.ToolNames ?? []],
         };
 
@@ -258,6 +259,13 @@ public sealed class AgentRunner
             checkpoint.State.Deserialize<AgentRunState>(StateJsonOptions)
             ?? throw new InvalidOperationException($"Checkpoint for run '{runId}' could not be deserialized.");
 
+        if (state.Status == RunStatus.AwaitingUser)
+        {
+            throw new InvalidOperationException(
+                $"Run '{runId}' is a chat awaiting the next user message; continue it with a message instead."
+            );
+        }
+
         if (state.Status is not (RunStatus.Running or RunStatus.AwaitingSupervision))
         {
             throw new InvalidOperationException($"Run '{runId}' has already ended with status {state.Status}.");
@@ -272,6 +280,55 @@ public sealed class AgentRunner
                         RunId = state.RunId,
                         Sequence = sequence,
                         Timestamp = at,
+                    },
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+        return await RunLoopAsync(state, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Continues a chat with the next user message: the transcript grows, and
+    /// supervision, model, budget, and working context all carry over — one run,
+    /// many turns.
+    /// </summary>
+    public async Task<AgentRunResult> ContinueAsync(
+        string runId,
+        string userMessage,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentException.ThrowIfNullOrEmpty(runId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userMessage);
+
+        var checkpoint =
+            await _checkpointStore.LoadLatestAsync(runId, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"No checkpoint found for run '{runId}'.");
+
+        var state =
+            checkpoint.State.Deserialize<AgentRunState>(StateJsonOptions)
+            ?? throw new InvalidOperationException($"Checkpoint for run '{runId}' could not be deserialized.");
+
+        if (state.Status != RunStatus.AwaitingUser)
+        {
+            throw new InvalidOperationException(
+                state.Status is RunStatus.Running or RunStatus.AwaitingSupervision
+                    ? $"Run '{runId}' has unfinished work (status {state.Status}); resume it before sending a new message."
+                    : $"Run '{runId}' has already ended with status {state.Status}."
+            );
+        }
+
+        state.Status = RunStatus.Running;
+        state.Messages.Add(new ChatMessage(ChatRole.User, userMessage));
+        await EmitAsync(
+                state,
+                (sequence, at) =>
+                    new RunContinuedEvent
+                    {
+                        RunId = state.RunId,
+                        Sequence = sequence,
+                        Timestamp = at,
+                        Message = userMessage,
                     },
                 cancellationToken
             )
@@ -492,8 +549,9 @@ public sealed class AgentRunner
 
             if (toolCalls.Count == 0)
             {
-                return await EndSegmentAsync(state, RunStatus.Completed, segmentStart, cancellationToken)
-                    .ConfigureAwait(false);
+                // A chat's natural end is a turn boundary, not the run's end.
+                var endStatus = state.Conversational ? RunStatus.AwaitingUser : RunStatus.Completed;
+                return await EndSegmentAsync(state, endStatus, segmentStart, cancellationToken).ConfigureAwait(false);
             }
 
             state.PendingToolCalls.AddRange(toolCalls);
@@ -837,6 +895,28 @@ public sealed class AgentRunner
                             RunId = state.RunId,
                             Sequence = sequence,
                             Timestamp = at,
+                        },
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+        }
+        else if (status == RunStatus.AwaitingUser)
+        {
+            await EmitAsync(
+                    state,
+                    (sequence, at) =>
+                        new TurnCompletedEvent
+                        {
+                            RunId = state.RunId,
+                            Sequence = sequence,
+                            Timestamp = at,
+                            InputTokens = state.InputTokens,
+                            OutputTokens = state.OutputTokens,
+                            Cost = state.Cost,
+                            ToolCalls = state.ToolCallCount,
+                            FinalTextPreview = Preview(
+                                state.Messages.LastOrDefault(m => m.Role == ChatRole.Assistant)?.Text
+                            ),
                         },
                     cancellationToken
                 )

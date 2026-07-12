@@ -44,4 +44,12 @@ public sealed record AgentRunRequest
     /// reconnects to the same model.
     /// </summary>
     public string? ModelKey { get; init; }
+
+    /// <summary>
+    /// Makes the run a chat: a turn's natural end becomes
+    /// <see cref="RunStatus.AwaitingUser"/> instead of terminal, and the next user
+    /// message continues the same run — one growing transcript, one budget, one
+    /// working context.
+    /// </summary>
+    public bool Conversational { get; init; }
 }

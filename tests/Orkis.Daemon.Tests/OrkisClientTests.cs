@@ -58,6 +58,52 @@ public sealed class OrkisClientTests(DaemonFixture fixture) : IClassFixture<Daem
     }
 
     [Fact]
+    public async Task ChatsAwaitTheUserAndContinueAcrossTurns()
+    {
+        var accepted = await _client.StartRunAsync(
+            new StartRunRequest
+            {
+                Prompt = "Run the greeting command.",
+                SupervisorKey = "yolo",
+                Chat = true,
+            }
+        );
+
+        var afterFirstTurn = await WaitForRunAsync(
+            accepted.RunId,
+            static r => !r.Active && r.Status == RunStatus.AwaitingUser
+        );
+        Assert.Equal(RunStatus.AwaitingUser, afterFirstTurn.Status);
+
+        var transcript = await _client.GetTranscriptAsync(accepted.RunId);
+        Assert.NotNull(transcript);
+        var firstTurnMessages = transcript.Count;
+        Assert.Contains(transcript, static m => m.Role == "user");
+        Assert.Contains(transcript, static m => m.Role == "assistant");
+
+        await _client.ContinueRunAsync(accepted.RunId, "And again, please.");
+        await WaitForRunAsync(accepted.RunId, static r => !r.Active && r.Status == RunStatus.AwaitingUser);
+
+        transcript = await _client.GetTranscriptAsync(accepted.RunId);
+        Assert.NotNull(transcript);
+        Assert.True(transcript.Count > firstTurnMessages);
+        Assert.Contains(transcript, static m => m.Text == "And again, please.");
+    }
+
+    [Fact]
+    public async Task MessagesToANonChatRunConflict()
+    {
+        var accepted = await _client.StartRunAsync(
+            new StartRunRequest { Prompt = "Run the greeting command.", SupervisorKey = "yolo" }
+        );
+        await WaitForRunAsync(accepted.RunId, static r => !r.Active && r.Status == RunStatus.Completed);
+
+        var ex = await Assert.ThrowsAsync<OrkisApiException>(() => _client.ContinueRunAsync(accepted.RunId, "more"));
+
+        Assert.Equal(System.Net.HttpStatusCode.Conflict, ex.StatusCode);
+    }
+
+    [Fact]
     public async Task CapabilitiesEnumerateWhatTheDaemonOffers()
     {
         var capabilities = await _client.GetCapabilitiesAsync();

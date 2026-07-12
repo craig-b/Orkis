@@ -11,6 +11,8 @@ namespace Orkis.Runs;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "$type")]
 [JsonDerivedType(typeof(RunStartedEvent), "run_started")]
 [JsonDerivedType(typeof(RunResumedEvent), "run_resumed")]
+[JsonDerivedType(typeof(RunContinuedEvent), "run_continued")]
+[JsonDerivedType(typeof(TurnCompletedEvent), "turn_completed")]
 [JsonDerivedType(typeof(ModelCallCompletedEvent), "model_call_completed")]
 [JsonDerivedType(typeof(ToolCallProposedEvent), "tool_call_proposed")]
 [JsonDerivedType(typeof(SupervisionDecidedEvent), "supervision_decided")]
@@ -42,6 +44,29 @@ public sealed record RunStartedEvent : RunEvent
 
 /// <summary>A paused run picked up from its checkpoint.</summary>
 public sealed record RunResumedEvent : RunEvent;
+
+/// <summary>A chat received its next user message and is running another turn.</summary>
+public sealed record RunContinuedEvent : RunEvent
+{
+    public required string Message { get; init; }
+}
+
+/// <summary>
+/// A chat's turn finished with an assistant reply; the run awaits the next user
+/// message. Usage figures are the run's running totals.
+/// </summary>
+public sealed record TurnCompletedEvent : RunEvent
+{
+    public required long InputTokens { get; init; }
+
+    public required long OutputTokens { get; init; }
+
+    public decimal Cost { get; init; }
+
+    public required int ToolCalls { get; init; }
+
+    public string? FinalTextPreview { get; init; }
+}
 
 /// <summary>A model call returned, with its usage and cost.</summary>
 public sealed record ModelCallCompletedEvent : RunEvent

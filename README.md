@@ -199,7 +199,15 @@ orkis deny <run> <call> --reason "not like this" --resume
 orkis artifacts
 orkis info                               # capabilities: supervisors, models, tools
 orkis dash                               # live TUI: runs, approvals, event feed
+orkis chat "hello"                       # interactive multi-turn chat
 ```
+
+A chat is a run whose turns end awaiting your next message instead of
+terminating: one growing transcript, one budget, one working context (its
+workspace and memory scope carry across turns), with supervision applying to
+every tool call along the way. Leave with an empty message and rejoin later —
+even after a daemon restart — with `orkis chat --run <run-id>`; over the wire
+it is `POST /v1/runs/{id}/messages` plus `GET /v1/runs/{id}/transcript`.
 
 `orkis dash` follows the daemon-wide event stream (`GET /v1/events`) — every run's
 events multiplexed live over one connection — on top of runs/approvals snapshots.

@@ -22,6 +22,9 @@ internal sealed class AgentRunState
     /// <summary>Key of the registered chat client, or <see langword="null"/> for the default.</summary>
     public string? ModelKey { get; init; }
 
+    /// <summary>Whether this run is a chat (turn ends await the user instead of terminating).</summary>
+    public bool Conversational { get; init; }
+
     /// <summary>The conversation transcript so far.</summary>
     public List<ChatMessage> Messages { get; init; } = [];
 

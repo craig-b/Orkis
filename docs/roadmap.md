@@ -46,17 +46,17 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
 
 ## Tier 2 — Medium-term (design mostly clear, larger or dependent)
 
-- **Chats: multi-turn runs** `[idea]` — design settled (July 2026): a chat is a
-  long-lived run, not a new entity. The checkpoint already *is* the conversation
-  (`AgentRunState.Messages`), so a user follow-up is a new entry point — append a user
-  turn to the transcript and run another segment (`POST /v1/runs/{id}/messages` on the
-  wire). Supervision, budgets, events, resume, and context compaction all apply
-  unchanged. Needs: an `AwaitingUser` status so a turn's end is not terminal; budget
-  semantics (the budget belongs to the chat, with an optional per-turn cap); and the
-  continuity trio wired per chat — its own `WorkspaceKey` and `MemoryScope`, making a
-  chat a durable working context (files + scoped memories), not just message history.
-  A transcript endpoint (`GET /v1/runs/{id}/transcript`) falls out of this — events
-  carry previews; the chat view (and debugging) needs the full messages.
+- **Chats: multi-turn runs** `[scaffold]` — built (July 2026) as designed: a chat is a
+  long-lived run (`AgentRunRequest.Conversational`), whose turns end in
+  `RunStatus.AwaitingUser` instead of terminating; `AgentRunner.ContinueAsync` appends
+  the next user message and runs another segment. Supervision, budgets (chat-level:
+  the cap gates the next turn, never claws back the last reply), events
+  (`run_continued`/`turn_completed`), model keys, and context compaction all apply
+  unchanged; `POST /v1/runs/{id}/messages` + `GET /v1/runs/{id}/transcript` on the
+  wire, `orkis chat` interactively (one SSE stream spans turns and daemon restarts
+  adopt chats like any run). Remaining: per-chat `WorkspaceKey`/`MemoryScope` wiring
+  in the daemon (the request fields exist; the daemon currently uses one global
+  workspace), and an optional per-turn budget cap.
 - **Scheduled runs** `[idea]` — cron expression + a run template (prompt, model key,
   supervisor key, budget, tool restriction via the existing
   `AgentRunRequest.ToolNames` — autonomy bounded by *capability*, e.g. yolo with

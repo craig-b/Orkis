@@ -102,6 +102,7 @@ internal static class DaemonEndpoints
                 var request = new AgentRunRequest
                 {
                     Prompt = body.Prompt,
+                    Conversational = body.Chat,
                     // Parity with the CLI host: a run without its own system prompt
                     // still gets the guardrail against invented tool results.
                     SystemPrompt =
@@ -182,6 +183,54 @@ internal static class DaemonEndpoints
                 }
 
                 return Results.Accepted($"/v1/runs/{runId}", new RunAcceptedResponse { RunId = runId });
+            }
+        );
+
+        // A chat's next user message. The run must be awaiting one: unfinished work
+        // resumes, and terminal runs stay terminal.
+        app.MapPost(
+            "/v1/runs/{runId}/messages",
+            static async (
+                string runId,
+                ContinueRunRequest body,
+                RunRegistry registry,
+                RunExecutor executor,
+                CancellationToken cancellationToken
+            ) =>
+            {
+                if (string.IsNullOrWhiteSpace(body.Message))
+                {
+                    return Results.BadRequest(new { error = "message is required." });
+                }
+
+                var summary = await registry.GetAsync(runId, cancellationToken);
+                if (summary is null)
+                {
+                    return Results.NotFound();
+                }
+
+                if (summary.Status != RunStatus.AwaitingUser)
+                {
+                    return Results.Conflict(
+                        new { error = $"Run '{runId}' is not awaiting a user message (status {summary.Status})." }
+                    );
+                }
+
+                if (!executor.TryContinue(runId, body.Message))
+                {
+                    return Results.Conflict(new { error = $"Run '{runId}' is already executing." });
+                }
+
+                return Results.Accepted($"/v1/runs/{runId}", new RunAcceptedResponse { RunId = runId });
+            }
+        );
+
+        app.MapGet(
+            "/v1/runs/{runId}/transcript",
+            static async (string runId, RunRegistry registry, CancellationToken cancellationToken) =>
+            {
+                var transcript = await registry.GetTranscriptAsync(runId, cancellationToken);
+                return transcript is null ? Results.NotFound() : Results.Ok(transcript);
             }
         );
 

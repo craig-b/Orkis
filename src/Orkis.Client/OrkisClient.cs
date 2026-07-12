@@ -149,6 +149,52 @@ public sealed class OrkisClient : IDisposable
         return await ReadAsync<RunAcceptedResponse>(response, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Sends a chat's next user message; the daemon runs the next turn.</summary>
+    public async Task<RunAcceptedResponse> ContinueRunAsync(
+        string runId,
+        string message,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentException.ThrowIfNullOrEmpty(runId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+        using var response = await _http
+            .PostAsJsonAsync(
+                new Uri($"/v1/runs/{Uri.EscapeDataString(runId)}/messages", UriKind.Relative),
+                new ContinueRunRequest { Message = message },
+                JsonOptions,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+        return await ReadAsync<RunAcceptedResponse>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The run's conversation (text-bearing messages; tool activity is the event
+    /// stream's story), or <see langword="null"/> when the run is unknown.
+    /// </summary>
+    public async Task<IReadOnlyList<TranscriptMessage>?> GetTranscriptAsync(
+        string runId,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentException.ThrowIfNullOrEmpty(runId);
+
+        using var response = await _http
+            .GetAsync(
+                new Uri($"/v1/runs/{Uri.EscapeDataString(runId)}/transcript", UriKind.Relative),
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        return await ReadAsync<IReadOnlyList<TranscriptMessage>>(response, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Pending approvals, optionally scoped to one run.</summary>
     public async Task<IReadOnlyList<ApprovalResponse>> ListApprovalsAsync(
         string? runId = null,

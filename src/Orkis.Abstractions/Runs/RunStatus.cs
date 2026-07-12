@@ -14,4 +14,10 @@ public enum RunStatus
 
     /// <summary>The run stopped because a <see cref="Orkis.Runs.RunBudget"/> limit was reached.</summary>
     BudgetExceeded = 3,
+
+    /// <summary>
+    /// A conversational run finished its turn and awaits the next user message; the
+    /// turn's end is not terminal.
+    /// </summary>
+    AwaitingUser = 4,
 }

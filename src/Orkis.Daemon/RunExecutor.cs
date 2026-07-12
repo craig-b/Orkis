@@ -44,6 +44,13 @@ internal sealed class RunExecutor
     public bool TryResume(string runId) =>
         TryExecute(runId, cancellationToken => _runner.ResumeAsync(runId, cancellationToken));
 
+    /// <summary>
+    /// Continues a chat with the next user message in the background. Returns
+    /// <see langword="false"/> when the run id is already executing.
+    /// </summary>
+    public bool TryContinue(string runId, string userMessage) =>
+        TryExecute(runId, cancellationToken => _runner.ContinueAsync(runId, userMessage, cancellationToken));
+
     private bool TryExecute(string runId, Func<CancellationToken, Task<AgentRunResult>> execute)
     {
         var started = new TaskCompletionSource();

@@ -269,6 +269,7 @@ internal static class Dashboard
         {
             Orkis.Agents.RunStatus.Completed => "[green]completed[/]",
             Orkis.Agents.RunStatus.AwaitingSupervision => "[yellow]awaiting supervision[/]",
+            Orkis.Agents.RunStatus.AwaitingUser => "[cyan]awaiting user[/]",
             Orkis.Agents.RunStatus.BudgetExceeded => "[red]budget exceeded[/]",
             _ => "running",
         };

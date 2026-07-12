@@ -80,6 +80,47 @@ runCommand.SetAction(
 );
 root.Subcommands.Add(runCommand);
 
+// chat -------------------------------------------------------------------------
+var chatMessageArgument = new Argument<string?>("message")
+{
+    Description = "The first message; prompted for interactively when omitted.",
+    Arity = ArgumentArity.ZeroOrOne,
+};
+var chatRunOption = new Option<string?>("--run") { Description = "Continue an existing chat by run id." };
+
+var chatCommand = new Command("chat", "Start (or continue) an interactive multi-turn chat.");
+chatCommand.Arguments.Add(chatMessageArgument);
+chatCommand.Options.Add(chatRunOption);
+chatCommand.Options.Add(supervisorOption);
+chatCommand.Options.Add(modelOption);
+chatCommand.Options.Add(systemOption);
+chatCommand.Options.Add(maxTokensOption);
+chatCommand.Options.Add(maxToolCallsOption);
+chatCommand.SetAction(
+    (parseResult, cancellationToken) =>
+        WithClient(
+            parseResult,
+            client =>
+                ChatAsync(
+                    client,
+                    parseResult.GetValue(chatRunOption),
+                    parseResult.GetValue(chatMessageArgument),
+                    new StartRunRequest
+                    {
+                        Prompt = "", // filled in from the first message
+                        Chat = true,
+                        SystemPrompt = parseResult.GetValue(systemOption),
+                        SupervisorKey = parseResult.GetValue(supervisorOption),
+                        Model = parseResult.GetValue(modelOption),
+                        MaxTokens = parseResult.GetValue(maxTokensOption),
+                        MaxToolCalls = parseResult.GetValue(maxToolCallsOption),
+                    },
+                    cancellationToken
+                )
+        )
+);
+root.Subcommands.Add(chatCommand);
+
 // ps ---------------------------------------------------------------------------
 var psCommand = new Command("ps", "List runs.");
 psCommand.SetAction(
@@ -443,6 +484,125 @@ static async Task<int> AttachAsync(OrkisClient client, string runId, Cancellatio
     }
 
     return completed ? 0 : 2;
+}
+
+/// <summary>
+/// The interactive chat loop: start (or rejoin) a conversational run, stream its
+/// events, print each assistant reply, and prompt for the next message. The SSE
+/// connection survives turn boundaries, so one stream carries the whole session.
+/// </summary>
+static async Task<int> ChatAsync(
+    OrkisClient client,
+    string? existingRunId,
+    string? firstMessage,
+    StartRunRequest template,
+    CancellationToken cancellationToken
+)
+{
+    if (Console.IsInputRedirected || !AnsiConsole.Profile.Capabilities.Interactive)
+    {
+        AnsiConsole.MarkupLine("[red]error:[/] chat needs an interactive terminal.");
+        return 1;
+    }
+
+    string runId;
+    var afterSequence = -1L;
+    if (existingRunId is not null)
+    {
+        runId = existingRunId;
+        var transcript = await client.GetTranscriptAsync(runId, cancellationToken);
+        if (transcript is null)
+        {
+            AnsiConsole.MarkupLine($"[red]error:[/] no run '{runId.EscapeMarkup()}'.");
+            return 1;
+        }
+
+        foreach (var message in transcript.Where(static m => m.Role != "system"))
+        {
+            RenderChatMessage(message.Role, message.Text);
+        }
+
+        // Skip the replay; the transcript above already told the story.
+        await foreach (var runEvent in client.StreamEventsAsync(runId, cancellationToken: cancellationToken))
+        {
+            afterSequence = runEvent.Sequence;
+        }
+
+        var next = firstMessage ?? PromptChatInput();
+        if (string.IsNullOrWhiteSpace(next))
+        {
+            return 0;
+        }
+
+        RenderChatMessage("user", next);
+        await client.ContinueRunAsync(runId, next, cancellationToken);
+    }
+    else
+    {
+        var first = firstMessage ?? PromptChatInput();
+        if (string.IsNullOrWhiteSpace(first))
+        {
+            return 0;
+        }
+
+        var accepted = await client.StartRunAsync(template with { Prompt = first }, cancellationToken);
+        runId = accepted.RunId;
+        AnsiConsole.MarkupLine(
+            $"[dim]chat {runId.EscapeMarkup()} — empty message leaves; rejoin with: orkis chat --run {runId.EscapeMarkup()}[/]"
+        );
+        RenderChatMessage("user", first);
+    }
+
+    await foreach (var runEvent in client.StreamEventsAsync(runId, afterSequence, follow: true, cancellationToken))
+    {
+        switch (runEvent)
+        {
+            case ToolCallProposedEvent or SupervisionDecidedEvent or ToolCallCompletedEvent:
+                EventRenderer.Render(runEvent);
+                break;
+            case RunPausedEvent:
+                EventRenderer.Render(runEvent);
+                if (!await PromptDecisionsAsync(client, runId, cancellationToken))
+                {
+                    AnsiConsole.MarkupLine(
+                        $"[yellow]left pending[/] — decide, resume, then rejoin with "
+                            + $"[bold]orkis chat --run {runId.EscapeMarkup()}[/]"
+                    );
+                    return 2;
+                }
+
+                break;
+            case TurnCompletedEvent turn:
+                RenderChatMessage("assistant", turn.FinalTextPreview ?? "");
+                var message = PromptChatInput();
+                if (string.IsNullOrWhiteSpace(message))
+                {
+                    AnsiConsole.MarkupLine($"[dim]left chat — rejoin with: orkis chat --run {runId.EscapeMarkup()}[/]");
+                    return 0;
+                }
+
+                RenderChatMessage("user", message);
+                await client.ContinueRunAsync(runId, message, cancellationToken);
+                break;
+            case RunCompletedEvent completed:
+                EventRenderer.Render(completed);
+                return completed.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase) ? 0 : 2;
+        }
+    }
+
+    return 0;
+}
+
+static void RenderChatMessage(string role, string text)
+{
+    var label = role == "user" ? "[bold cyan]you[/]" : $"[bold magenta]{role.EscapeMarkup()}[/]";
+    AnsiConsole.MarkupLine($"\n{label}: {text.EscapeMarkup()}");
+}
+
+static string? PromptChatInput()
+{
+    AnsiConsole.Markup("\n[bold cyan]you[/]: ");
+    return Console.ReadLine();
 }
 
 /// <summary>

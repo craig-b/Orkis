@@ -19,6 +19,12 @@ public sealed record StartRunRequest
     /// <summary>Registered model key for the run, or <see langword="null"/> for the daemon's default.</summary>
     public string? Model { get; init; }
 
+    /// <summary>
+    /// Makes the run a chat: turns end awaiting the next user message
+    /// (<c>POST /v1/runs/{id}/messages</c>) instead of terminating.
+    /// </summary>
+    public bool Chat { get; init; }
+
     /// <summary>Optional token budget for the run.</summary>
     public long? MaxTokens { get; init; }
 
@@ -107,6 +113,13 @@ public sealed record ApprovalResponse
 
     /// <summary>The proposed call's arguments as a JSON object.</summary>
     public required JsonElement Arguments { get; init; }
+}
+
+/// <summary>Body of <c>POST /v1/runs/{id}/messages</c> — a chat's next user message.</summary>
+public sealed record ContinueRunRequest
+{
+    /// <summary>The user's next message.</summary>
+    public required string Message { get; init; }
 }
 
 /// <summary>Body of <c>POST /v1/approvals/{runId}/{callId}</c>.</summary>

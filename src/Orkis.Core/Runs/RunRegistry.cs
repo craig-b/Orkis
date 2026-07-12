@@ -40,6 +40,47 @@ public sealed class RunRegistry
         return checkpoint is null ? null : Summarize(checkpoint);
     }
 
+    /// <summary>
+    /// The run's conversation as of its latest checkpoint — text-bearing messages
+    /// only (tool activity is the event stream's story) — or <see langword="null"/>
+    /// when the run is unknown or its checkpoint is unreadable.
+    /// </summary>
+    public async Task<IReadOnlyList<TranscriptMessage>?> GetTranscriptAsync(
+        string runId,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentException.ThrowIfNullOrEmpty(runId);
+
+        var checkpoint = await _checkpointStore.LoadLatestAsync(runId, cancellationToken).ConfigureAwait(false);
+        if (checkpoint is null)
+        {
+            return null;
+        }
+
+        Agents.AgentRunState? state;
+        try
+        {
+            state = checkpoint.State.Deserialize<Agents.AgentRunState>(Agents.AgentRunner.StateJsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        if (state is null)
+        {
+            return null;
+        }
+
+        return
+        [
+            .. state
+                .Messages.Where(static message => !string.IsNullOrWhiteSpace(message.Text))
+                .Select(static message => new TranscriptMessage { Role = message.Role.Value, Text = message.Text }),
+        ];
+    }
+
     private static RunSummary? Summarize(RunCheckpoint checkpoint)
     {
         AgentRunState? state;

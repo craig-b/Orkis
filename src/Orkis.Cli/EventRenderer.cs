@@ -18,6 +18,14 @@ internal static class EventRenderer
         {
             RunStartedEvent e => $"[bold]run started[/] (supervision: {e.SupervisorKey.EscapeMarkup()})",
             RunResumedEvent => "[blue]run resumed[/]",
+            RunContinuedEvent e => $"[bold]user:[/] {Truncate(e.Message.ReplaceLineEndings(" "), 120)}",
+            TurnCompletedEvent e => "[green]turn completed[/]"
+                + (
+                    e.FinalTextPreview is { Length: > 0 } reply
+                        ? $" — {Truncate(reply.ReplaceLineEndings(" "), 120)}"
+                        : ""
+                )
+                + $" [dim]({e.InputTokens} in / {e.OutputTokens} out tokens so far)[/]",
             ModelCallCompletedEvent e => $"[dim]model {(e.ModelId ?? "?").EscapeMarkup()}: "
                 + $"{e.InputTokens} in / {e.OutputTokens} out tokens"
                 + (e.Cost > 0 ? $", cost {e.Cost.ToString("0.####", CultureInfo.InvariantCulture)}" : "")
