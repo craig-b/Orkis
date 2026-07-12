@@ -34,6 +34,16 @@ public sealed class PatchedRootfsFixture : IDisposable
         Debugfs(patched, "rm /etc/resolv.conf");
         Debugfs(patched, "symlink /etc/resolv.conf /tmp/resolv.conf");
 
+        // The patched image carries current guest code, so stamp it as current.
+        var versionFile = Path.Combine(Path.GetTempPath(), $"orkis-guest-version-{Guid.NewGuid():n}");
+        File.WriteAllText(
+            versionFile,
+            FirecrackerSandbox.GuestContractVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        );
+        Debugfs(patched, "rm /opt/orkis-guest.version");
+        Debugfs(patched, $"write {versionFile} /opt/orkis-guest.version");
+        File.Delete(versionFile);
+
         RootfsPath = patched;
     }
 
@@ -45,7 +55,7 @@ public sealed class PatchedRootfsFixture : IDisposable
         }
     }
 
-    private static void Debugfs(string imagePath, string request)
+    internal static void Debugfs(string imagePath, string request)
     {
         var startInfo = new ProcessStartInfo { FileName = "debugfs", RedirectStandardError = true };
         startInfo.ArgumentList.Add("-w");

@@ -71,6 +71,19 @@ install -m 0755 "$SCRIPT_DIR/guest/init.sh" "$ROOT/init"
 install -m 0644 "$SCRIPT_DIR/guest/orkis-agent.py" -D "$ROOT/opt/orkis-agent.py"
 mkdir -p "$ROOT/work"
 
+# Stamp the host↔guest contract version so the sandbox can warn loudly when a
+# deployed image drifts behind the host's guest code.
+GUEST_VERSION="$(
+  sed -n 's/.*GuestContractVersion = \([0-9][0-9]*\);.*/\1/p' \
+    "$SCRIPT_DIR/../src/Orkis.Sandbox.Firecracker/FirecrackerSandbox.cs"
+)"
+if [ -z "$GUEST_VERSION" ]; then
+  echo "Could not extract GuestContractVersion from FirecrackerSandbox.cs." >&2
+  exit 1
+fi
+printf '%s\n' "$GUEST_VERSION" > "$ROOT/opt/orkis-guest.version"
+echo "Guest contract version: $GUEST_VERSION"
+
 # The rootfs mounts read-only, so DNS config must live somewhere writable: make
 # /etc/resolv.conf a symlink into /tmp, written by /init when networking is on.
 ln -sf /tmp/resolv.conf "$ROOT/etc/resolv.conf"

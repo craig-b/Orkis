@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -34,6 +35,17 @@ namespace Orkis.Sandboxing;
 /// </remarks>
 public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncDisposable
 {
+    /// <summary>
+    /// Version of the host↔guest contract: the /init boot protocol, the agent's vsock
+    /// framing, and the network boot arguments. <c>scripts/setup-firecracker.sh</c>
+    /// stamps this number into the rootfs at <c>/opt/orkis-guest.version</c>, and
+    /// executions against an image stamped differently (or not at all) carry a
+    /// warning — deployed guest images silently drift behind the repo's guest code,
+    /// and stale ones fail in ways that are otherwise baffling to debug. Bump this
+    /// when the contract changes.
+    /// </summary>
+    public const int GuestContractVersion = 1;
+
     private const string StdoutMarker = "===ORKIS:STDOUT===";
     private const string StderrMarker = "===ORKIS:STDERR===";
     private const string ExitMarker = "===ORKIS:EXIT:";
@@ -48,6 +60,7 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
     private readonly FirecrackerSandboxOptions _options;
     private readonly TimeProvider _timeProvider;
     private volatile bool _agentUnavailable;
+    private Task<string?>? _guestVersionWarning;
 
     public FirecrackerSandbox(IOptions<FirecrackerSandboxOptions> options, TimeProvider? timeProvider = null)
     {
@@ -83,6 +96,24 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        var result = await ExecuteCoreAsync(request, cancellationToken).ConfigureAwait(false);
+
+        // A stale guest image is checked once per sandbox and warned about on every
+        // result, so both the operator and the model see it while it lasts.
+        var versionWarning = await GetGuestVersionWarningAsync().ConfigureAwait(false);
+        return versionWarning is null
+            ? result
+            : result with
+            {
+                StandardError = versionWarning + (result.StandardError.Length > 0 ? "\n" + result.StandardError : ""),
+            };
+    }
+
+    private async Task<SandboxExecutionResult> ExecuteCoreAsync(
+        SandboxExecutionRequest request,
+        CancellationToken cancellationToken
+    )
+    {
         var executionDirectory = Path.Combine(_options.WorkingRoot, Guid.CreateVersion7().ToString("n"));
         var stagingDirectory = Path.Combine(executionDirectory, "staging");
         Directory.CreateDirectory(stagingDirectory);
@@ -706,11 +737,16 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
     private async Task<FirecrackerProcess.Outcome> RunDebugfsAsync(
         string imagePath,
         string requestText,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        bool write = true
     )
     {
         var startInfo = new ProcessStartInfo { FileName = _options.DebugfsPath };
-        startInfo.ArgumentList.Add("-w");
+        if (write)
+        {
+            startInfo.ArgumentList.Add("-w");
+        }
+
         startInfo.ArgumentList.Add("-R");
         startInfo.ArgumentList.Add(requestText);
         startInfo.ArgumentList.Add(imagePath);
@@ -718,6 +754,43 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
         return await FirecrackerProcess
             .RunAsync(startInfo, TimeSpan.FromSeconds(30), 8192, _timeProvider, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private Task<string?> GetGuestVersionWarningAsync() =>
+        // Benign race: concurrent first executions at worst check twice.
+        _guestVersionWarning ??= CheckGuestVersionAsync();
+
+    /// <summary>
+    /// Compares the rootfs's stamped guest-code version against
+    /// <see cref="GuestContractVersion"/>, returning a warning line on drift or
+    /// <see langword="null"/> when current. Best-effort: a failed check (no debugfs,
+    /// unreadable image) never blocks execution — the boot itself will complain.
+    /// </summary>
+    private async Task<string?> CheckGuestVersionAsync()
+    {
+        try
+        {
+            var outcome = await RunDebugfsAsync(
+                    _options.RootfsImagePath,
+                    "cat /opt/orkis-guest.version",
+                    CancellationToken.None,
+                    write: false
+                )
+                .ConfigureAwait(false);
+            var stamped = outcome.StandardOutput.Trim();
+            if (stamped == GuestContractVersion.ToString(CultureInfo.InvariantCulture))
+            {
+                return null;
+            }
+
+            var found = stamped.Length == 0 ? "no version stamp" : $"guest version {stamped}";
+            return $"warning: the guest image '{_options.RootfsImagePath}' carries {found}, but this host "
+                + $"expects guest version {GuestContractVersion}; rebuild it with scripts/setup-firecracker.sh.";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
     }
 
     private void WriteCommandScript(SandboxExecutionRequest request, string stagingDirectory)

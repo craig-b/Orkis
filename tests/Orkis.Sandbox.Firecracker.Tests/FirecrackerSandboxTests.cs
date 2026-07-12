@@ -259,6 +259,51 @@ public sealed class FirecrackerSandboxTests
     }
 
     [Fact]
+    public async Task StampedGuestImageCarriesNoVersionWarning()
+    {
+        if (!Available)
+        {
+            return;
+        }
+
+        var result = await CreateSandbox().ExecuteAsync(Shell("echo ok"));
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.DoesNotContain("guest image", result.StandardError);
+    }
+
+    [Fact]
+    public async Task StaleGuestImageWarnsInEveryResult()
+    {
+        if (!Available)
+        {
+            return;
+        }
+
+        var unstamped = Path.Combine(Path.GetTempPath(), $"orkis-unstamped-{Guid.NewGuid():n}.ext4");
+        File.Copy(RootfsPath, unstamped);
+        try
+        {
+            PatchedRootfsFixture.Debugfs(unstamped, "rm /opt/orkis-guest.version");
+
+            await using var sandbox = new FirecrackerSandbox(
+                Options.Create(
+                    new FirecrackerSandboxOptions { KernelImagePath = KernelPath, RootfsImagePath = unstamped }
+                )
+            );
+            var result = await sandbox.ExecuteAsync(Shell("echo ok"));
+
+            // The command still runs; the drift warning rides the result.
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("scripts/setup-firecracker.sh", result.StandardError);
+        }
+        finally
+        {
+            File.Delete(unstamped);
+        }
+    }
+
+    [Fact]
     public async Task RunsCommandInMicroVmAndCapturesOutput()
     {
         if (!Available)
