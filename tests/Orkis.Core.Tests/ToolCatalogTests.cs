@@ -56,13 +56,7 @@ public sealed class ToolScopingTests : IDisposable
     public void Dispose() => _chatClient.Dispose();
 
     private AgentRunner CreateRunner(IEnumerable<ITool> coreTools) =>
-        new(
-            _chatClient,
-            coreTools,
-            new FakeSupervisorResolver(_supervisor),
-            _checkpointStore,
-            TimeProvider.System
-        );
+        new(_chatClient, coreTools, new FakeSupervisorResolver(_supervisor), _checkpointStore, TimeProvider.System);
 
     private static List<string> DeclaredToolNames(ChatOptions? options) =>
         options?.Tools?.Select(tool => tool.Name).ToList() ?? [];

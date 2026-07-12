@@ -606,10 +606,7 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
         var normalized = relativePath.Replace('\\', '/').Trim('/');
         if (Path.IsPathRooted(relativePath) || normalized.Split('/').Contains(".."))
         {
-            throw new ArgumentException(
-                "The path must be relative and inside the workspace.",
-                nameof(relativePath)
-            );
+            throw new ArgumentException("The path must be relative and inside the workspace.", nameof(relativePath));
         }
 
         return normalized;

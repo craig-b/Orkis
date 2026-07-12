@@ -28,11 +28,7 @@ internal sealed class OfflineChatClient : IChatClient
             "search_tools",
             new Dictionary<string, object?> { ["query"] = "dice" }
         );
-        FunctionCallContent diceCall = new(
-            "offline-3",
-            "roll_dice",
-            new Dictionary<string, object?> { ["count"] = 3 }
-        );
+        FunctionCallContent diceCall = new("offline-3", "roll_dice", new Dictionary<string, object?> { ["count"] = 3 });
         FunctionCallContent shellCall = new(
             "offline-4",
             "run_shell_command",

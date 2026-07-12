@@ -132,7 +132,11 @@ public sealed class RunCostTests : IDisposable
     public async Task MaxCostWithoutPricingFailsFast()
     {
         var runner = CreateRunner(NullCostCalculator.Instance);
-        var request = new AgentRunRequest { Prompt = "go", Budget = new RunBudget { MaxCost = 1m } };
+        var request = new AgentRunRequest
+        {
+            Prompt = "go",
+            Budget = new RunBudget { MaxCost = 1m },
+        };
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => runner.StartAsync(request));
     }

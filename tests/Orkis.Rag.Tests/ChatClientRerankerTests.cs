@@ -41,7 +41,8 @@ public sealed class ChatClientRerankerTests : IDisposable
     {
         _chatClient.Enqueue("""[{"index":1,"score":5},{"index":2,"score":5}]""");
 
-        await CreateReranker().RerankAsync("the query text", [Candidate("a", "first passage"), Candidate("b", "second passage")]);
+        await CreateReranker()
+            .RerankAsync("the query text", [Candidate("a", "first passage"), Candidate("b", "second passage")]);
 
         var prompt = Assert.Single(_chatClient.Requests).Last(m => m.Role == ChatRole.User).Text;
         Assert.Contains("the query text", prompt, StringComparison.Ordinal);
@@ -82,7 +83,9 @@ public sealed class ChatClientRerankerTests : IDisposable
     [Fact]
     public async Task OutOfRangeAndDuplicateIndicesAreIgnored()
     {
-        _chatClient.Enqueue("""[{"index":1,"score":4},{"index":1,"score":9},{"index":7,"score":10},{"index":0,"score":10}]""");
+        _chatClient.Enqueue(
+            """[{"index":1,"score":4},{"index":1,"score":9},{"index":7,"score":10},{"index":0,"score":10}]"""
+        );
 
         var result = await CreateReranker().RerankAsync("q", [Candidate("a", "one"), Candidate("b", "two")]);
 

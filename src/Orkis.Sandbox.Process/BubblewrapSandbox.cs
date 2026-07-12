@@ -45,7 +45,14 @@ public sealed class BubblewrapSandbox : ISandbox, IWorkspaceFileAccess
         string relativePath,
         Stream content,
         CancellationToken cancellationToken = default
-    ) => SandboxScratch.WriteWorkspaceFileAsync(_options.WorkingRoot, workspaceKey, relativePath, content, cancellationToken);
+    ) =>
+        SandboxScratch.WriteWorkspaceFileAsync(
+            _options.WorkingRoot,
+            workspaceKey,
+            relativePath,
+            content,
+            cancellationToken
+        );
 
     /// <inheritdoc />
     public async Task<SandboxExecutionResult> ExecuteAsync(

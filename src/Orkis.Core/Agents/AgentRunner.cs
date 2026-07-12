@@ -319,10 +319,7 @@ public sealed class AgentRunner
             if (searchDecision.Verdict == SupervisionVerdict.Denied)
             {
                 RecordToolCall(SearchToolsName, "denied");
-                return Error(
-                    toolCall,
-                    $"Tool call denied by supervisor: {searchDecision.Reason ?? "no reason given"}"
-                );
+                return Error(toolCall, $"Tool call denied by supervisor: {searchDecision.Reason ?? "no reason given"}");
             }
 
             state.ToolCallCount++;
@@ -446,7 +443,8 @@ public sealed class AgentRunner
             return Error(toolCall, "Missing required argument 'query'.");
         }
 
-        var matches = await _toolCatalog!.SearchAsync(query, cancellationToken: cancellationToken)
+        var matches = await _toolCatalog!
+            .SearchAsync(query, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
         // Tools already available (core or previously activated) are not re-announced.

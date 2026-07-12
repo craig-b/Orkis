@@ -59,7 +59,7 @@ if (argList.Contains("--artifacts"))
 
     foreach (var artifact in artifacts)
     {
-        Console.WriteLine($"{artifact.CreatedAt:u}  {artifact.Length,10}  {artifact.Name}");
+        Console.WriteLine($"{artifact.CreatedAt:u}  {artifact.Length, 10}  {artifact.Name}");
     }
 
     return 0;
@@ -123,7 +123,9 @@ if (approveIndex >= 0 || denyIndex >= 0)
 
     var target = matches[0];
     var decision = approving
-        ? extra is "s" or "sandbox" ? SupervisionDecision.Approve(SandboxLevel.Standard) : SupervisionDecision.Approve()
+        ? extra is "s" or "sandbox"
+            ? SupervisionDecision.Approve(SandboxLevel.Standard)
+            : SupervisionDecision.Approve()
         : SupervisionDecision.Deny(extra ?? "The operator denied this action.");
     await queue.DecideAsync(target.RunId, target.Call.Id, decision);
 
@@ -319,7 +321,8 @@ else
             "You are the Orkis demo agent. Use the available tools to fulfil the request, then summarize what happened."
             + "\n\n"
             + SystemPromptFragments.ConfabulationGuardrail,
-        SupervisorKey = yolo ? "yolo"
+        SupervisorKey =
+            yolo ? "yolo"
             : queueMode ? "queue"
             : SupervisorKeys.Default,
         Budget = new RunBudget { MaxToolCalls = 10, MaxTokens = 100_000 },

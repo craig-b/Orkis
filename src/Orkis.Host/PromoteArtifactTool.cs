@@ -12,11 +12,8 @@ namespace Orkis.Host;
 /// mutating so supervision reviews every promotion — approving one is a trust decision
 /// about that specific content.
 /// </summary>
-public sealed class PromoteArtifactTool(
-    IEnumerable<ISandbox> sandboxes,
-    IArtifactStore artifacts,
-    string workspaceKey
-) : ITool
+public sealed class PromoteArtifactTool(IEnumerable<ISandbox> sandboxes, IArtifactStore artifacts, string workspaceKey)
+    : ITool
 {
     private readonly IReadOnlyList<ISandbox> _sandboxes = [.. sandboxes];
 

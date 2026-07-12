@@ -23,14 +23,12 @@ public sealed class InMemoryApprovalInbox : IApprovalInbox
 
     /// <inheritdoc />
     public Task<IReadOnlyList<PendingApproval>> ListPendingAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<PendingApproval>>(
-            [
-                .. _entries
-                    .Values.Where(static entry => entry.Decision is null)
-                    .Select(static entry => entry.Approval)
-                    .OrderBy(static approval => approval.RequestedAt),
-            ]
-        );
+        Task.FromResult<IReadOnlyList<PendingApproval>>([
+            .. _entries
+                .Values.Where(static entry => entry.Decision is null)
+                .Select(static entry => entry.Approval)
+                .OrderBy(static approval => approval.RequestedAt),
+        ]);
 
     /// <inheritdoc />
     public Task<SupervisionDecision?> GetDecisionAsync(

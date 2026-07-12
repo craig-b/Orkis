@@ -175,7 +175,14 @@ internal static class SandboxScratch
         var path = ResolveWorkspaceFile(workingRoot, workspaceKey, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
-        var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous);
+        var stream = new FileStream(
+            path,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            81920,
+            FileOptions.Asynchronous
+        );
         await using (stream.ConfigureAwait(false))
         {
             await content.CopyToAsync(stream, cancellationToken).ConfigureAwait(false);

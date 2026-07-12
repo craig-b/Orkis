@@ -85,7 +85,12 @@ public sealed class ProcessSandboxTests : IDisposable
     public async Task WorkspaceFileAccessReadsWhatCommandsWrote()
     {
         var sandbox = CreateSandbox();
-        await sandbox.ExecuteAsync(Shell("mkdir -p out; printf inner-content > out/report.txt") with { WorkspaceKey = "chat-1" });
+        await sandbox.ExecuteAsync(
+            Shell("mkdir -p out; printf inner-content > out/report.txt") with
+            {
+                WorkspaceKey = "chat-1",
+            }
+        );
 
         var stream = await sandbox.ReadWorkspaceFileAsync("chat-1", "out/report.txt");
 
