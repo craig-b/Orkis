@@ -1,5 +1,6 @@
 import { css, html, LitElement } from "lit";
-import { api, runEvents, Unauthorized } from "../api.js";
+import { api, Unauthorized } from "../api.js";
+import { onRunEvent } from "../bus.js";
 import { eventLine, shortId } from "../format.js";
 import type { RunEvent, TranscriptMessage } from "../types.js";
 
@@ -26,7 +27,7 @@ export class ChatView extends LitElement {
   declare chats: { runId: string; status: string }[];
   declare busy: boolean;
 
-  private abort = new AbortController();
+  private unsubscribe?: () => void;
 
   constructor() {
     super();
@@ -39,11 +40,15 @@ export class ChatView extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     void this.loadChats();
+    // Live events come from the shell's single stream, filtered to this chat.
+    this.unsubscribe = onRunEvent((event) => {
+      if (event.runId === this.runId) this.appendEvent(event);
+    });
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    this.abort.abort();
+    this.unsubscribe?.();
   }
 
   private async loadChats(): Promise<void> {
@@ -58,38 +63,12 @@ export class ChatView extends LitElement {
   }
 
   private async open(runId: string): Promise<void> {
-    this.abort.abort();
-    this.abort = new AbortController();
     this.runId = runId;
     const transcript = (await api.transcript(runId)) ?? [];
     this.items = transcript
       .filter((message: TranscriptMessage) => message.role !== "system")
       .map((message) => ({ kind: "message" as const, role: message.role, text: message.text }));
-    void this.follow(runId);
-  }
-
-  private async follow(runId: string): Promise<void> {
-    const encoded = encodeURIComponent(runId);
-    try {
-      // The transcript already told the history: skip the replay by learning the
-      // last sequence first, then following after it.
-      let last = -1;
-      for await (const event of runEvents(`/v1/runs/${encoded}/events`, this.abort.signal)) {
-        last = event.sequence;
-      }
-
-      for await (const event of runEvents(
-        `/v1/runs/${encoded}/events?follow=true&after=${last}`,
-        this.abort.signal,
-      )) {
-        if (event.sequence <= last) continue;
-        last = event.sequence;
-        this.appendEvent(event);
-      }
-    } catch (error) {
-      if (this.abort.signal.aborted) return;
-      if (error instanceof Unauthorized) this.dispatchEvent(unauthorized());
-    }
+    // Live events for this run now flow via the bus subscription.
   }
 
   private appendEvent(event: RunEvent): void {
@@ -127,8 +106,7 @@ export class ChatView extends LitElement {
       if (this.runId === null) {
         const accepted = await api.startRun({ prompt: text, chat: true, supervisorKey: "yolo" });
         this.items = [{ kind: "message", role: "user", text }];
-        this.runId = accepted.runId;
-        void this.follow(accepted.runId);
+        this.runId = accepted.runId; // bus subscription now matches this run
         void this.loadChats();
       } else {
         this.items = [...this.items, { kind: "message", role: "user", text }];

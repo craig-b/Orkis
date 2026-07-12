@@ -1,5 +1,6 @@
 import { css, html, LitElement } from "lit";
-import { api, runEvents, Unauthorized } from "../api.js";
+import { api, Unauthorized } from "../api.js";
+import { onConnection, onRunEvent } from "../bus.js";
 import { eventLine, shortId, statusBadge, time } from "../format.js";
 import type { RunEvent, RunResponse } from "../types.js";
 
@@ -18,8 +19,8 @@ export class RunsView extends LitElement {
   declare feed: RunEvent[];
   declare connected: boolean;
 
-  private abort = new AbortController();
   private refreshTimer?: number;
+  private unsubscribe: Array<() => void> = [];
 
   constructor() {
     super();
@@ -30,15 +31,21 @@ export class RunsView extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this.abort = new AbortController();
     void this.refresh();
-    void this.pump();
+    // Events come from the shell's single subscription, not a second connection.
+    this.unsubscribe = [
+      onRunEvent((event) => {
+        this.feed = [...this.feed.slice(-19), event];
+        void this.refresh();
+      }),
+      onConnection((connected) => (this.connected = connected)),
+    ];
     this.refreshTimer = window.setInterval(() => void this.refresh(), 5000);
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    this.abort.abort();
+    for (const off of this.unsubscribe) off();
     window.clearInterval(this.refreshTimer);
   }
 
@@ -47,23 +54,6 @@ export class RunsView extends LitElement {
       this.runs = await api.runs();
     } catch (error) {
       if (error instanceof Unauthorized) this.dispatchEvent(unauthorized());
-    }
-  }
-
-  private async pump(): Promise<void> {
-    while (!this.abort.signal.aborted) {
-      try {
-        this.connected = true;
-        for await (const event of runEvents("/v1/events", this.abort.signal)) {
-          this.feed = [...this.feed.slice(-19), event];
-          void this.refresh();
-        }
-      } catch (error) {
-        if (this.abort.signal.aborted) return;
-        if (error instanceof Unauthorized) this.dispatchEvent(unauthorized());
-      }
-      this.connected = false;
-      await new Promise((resolve) => setTimeout(resolve, 1500));
     }
   }
 

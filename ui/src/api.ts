@@ -1,13 +1,7 @@
 // The gateway is same-origin, so this is plain fetch — with one wrinkle: a 401 means
 // "log in", handled by exchanging the token for a cookie session at /auth/session.
 
-import type {
-  ApprovalResponse,
-  CapabilitiesResponse,
-  RunEvent,
-  RunResponse,
-  TranscriptMessage,
-} from "./types.js";
+import type { ApprovalResponse, CapabilitiesResponse, RunResponse, TranscriptMessage } from "./types.js";
 
 /** Raised on 401 so views can hand off to the login overlay. */
 export class Unauthorized extends Error {
@@ -69,33 +63,6 @@ export const api = {
     ),
 };
 
-/**
- * Reads an SSE stream of run events via fetch (EventSource cannot send credentials
- * we may later need, and this parser matches the daemon's one-line-per-event
- * format). Yields until the server closes or the signal aborts.
- */
-export async function* runEvents(path: string, signal: AbortSignal): AsyncGenerator<RunEvent> {
-  const response = await fetch(path, { signal, headers: { accept: "text/event-stream" } });
-  if (response.status === 401) throw new Unauthorized();
-  if (!response.ok || response.body === null) throw new Error(`${response.status}`);
-
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffered = "";
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      buffered += value;
-      let newline;
-      while ((newline = buffered.indexOf("\n")) >= 0) {
-        const line = buffered.slice(0, newline);
-        buffered = buffered.slice(newline + 1);
-        if (line.startsWith("data: ")) {
-          yield JSON.parse(line.slice("data: ".length)) as RunEvent;
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
+// The live event stream is opened once, in the app shell, with the browser's native
+// EventSource (see main.ts), and fanned out in-page via bus.ts — a single long-lived
+// connection for the whole UI. No streaming helper lives here.

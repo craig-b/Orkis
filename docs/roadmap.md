@@ -104,11 +104,14 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   decisions (already in the event log), MCP/schedule management (the runtime-object
   APIs), prompt templates. Prerequisite endpoints are all built: transcript and
   artifact content (`GET /v1/artifacts/{name}`, `orkis artifacts <name> [-o]`).
-- **Notifications** `[idea]` — design settled (July 2026): the daemon already ships
-  the notification *primitive* (the event stream); delivery-to-a-human is
-  presentation, and presentation lives web-side. Tier 1: the web UI toasts + browser
-  Notifications API on `run_paused` off its existing `/v1/events` subscription —
-  zero backend. Tier 2: Web Push via the gateway (service worker + VAPID;
+- **Notifications** `[scaffold]` — the daemon ships the notification *primitive* (the
+  event stream); delivery-to-a-human is presentation, done web-side. Tier 1 is built:
+  the web UI toasts + fires a browser Notification on `run_paused` off the shell's
+  single `/v1/events` subscription, with a live pending badge on the approvals tab —
+  zero new backend. (Note: live SSE to the browser needs HTTP/2 over TLS to be robust
+  under HTTP/1.1's per-host connection limit; the server side is correct — `no-store`,
+  unbuffered, `: ping` heartbeat, infinite proxy timeout — verified via curl.)
+  Tier 2: Web Push via the gateway (service worker + VAPID;
   subscriptions in gateway state next to sessions; the gateway holds its own client
   subscription to the daemon's stream and pushes on filtered events) — also the step
   that makes the UI an installable PWA, which may cover mobile entirely (Android and

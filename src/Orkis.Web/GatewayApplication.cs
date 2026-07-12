@@ -225,6 +225,10 @@ public static class GatewayApplication
             }
         }
 
+        // SSE responses must not sit in a buffer — the browser's reader stalls until
+        // the (never-closing) stream flushes.
+        context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>()?.DisableBuffering();
+
         var body = await response.Content.ReadAsStreamAsync(context.RequestAborted);
         await using (body)
         {

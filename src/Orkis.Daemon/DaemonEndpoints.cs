@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Options;
 using Orkis;
 using Orkis.Agents;
@@ -578,6 +579,7 @@ internal static class DaemonEndpoints
 
         context.Response.ContentType = "text/event-stream";
         context.Response.Headers.CacheControl = "no-store";
+        context.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
 
         try
         {
@@ -628,14 +630,32 @@ internal static class DaemonEndpoints
         var cancellationToken = context.RequestAborted;
         context.Response.ContentType = "text/event-stream";
         context.Response.Headers.CacheControl = "no-store";
+        context.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
 
         using var subscription = broker.SubscribeAll();
         await context.Response.Body.FlushAsync(cancellationToken);
         try
         {
-            await foreach (var runEvent in subscription.Reader.ReadAllAsync(cancellationToken))
+            // Read with a heartbeat: a ':' comment line every 20s keeps the connection
+            // provably alive through idle-timeout proxies and lets a client tell "dead"
+            // from "no events yet".
+            var reader = subscription.Reader;
+            while (!cancellationToken.IsCancellationRequested)
             {
-                await WriteEventAsync(context.Response, runEvent, cancellationToken, includeId: false);
+                var ready = reader.WaitToReadAsync(cancellationToken).AsTask();
+                var completed = await Task.WhenAny(ready, Task.Delay(TimeSpan.FromSeconds(20), cancellationToken))
+                    .ConfigureAwait(false);
+                if (completed != ready || !await ready.ConfigureAwait(false))
+                {
+                    await context.Response.WriteAsync(": ping\n\n", cancellationToken).ConfigureAwait(false);
+                    await context.Response.Body.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                while (reader.TryRead(out var runEvent))
+                {
+                    await WriteEventAsync(context.Response, runEvent, cancellationToken, includeId: false);
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
