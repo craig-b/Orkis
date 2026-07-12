@@ -105,6 +105,7 @@ public sealed class RunRegistry
             RunId = state.RunId,
             Status = state.Status,
             SupervisorKey = state.SupervisorKey,
+            Conversational = state.Conversational,
             InputTokens = state.InputTokens,
             OutputTokens = state.OutputTokens,
             Cost = state.Cost,

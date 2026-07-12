@@ -10,14 +10,14 @@ namespace Orkis.Daemon;
 /// </summary>
 internal sealed class RunExecutor
 {
-    private readonly AgentRunner _runner;
+    private readonly RunnerFactory _runners;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ConcurrentDictionary<string, Task> _active = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _failures = new(StringComparer.Ordinal);
 
-    public RunExecutor(AgentRunner runner, IHostApplicationLifetime lifetime)
+    public RunExecutor(RunnerFactory runners, IHostApplicationLifetime lifetime)
     {
-        _runner = runner;
+        _runners = runners;
         _lifetime = lifetime;
     }
 
@@ -34,22 +34,32 @@ internal sealed class RunExecutor
     /// Starts the run in the background. Returns <see langword="false"/> when the run
     /// id is already executing.
     /// </summary>
-    public bool TryStart(AgentRunRequest request) =>
-        TryExecute(request.RunId, cancellationToken => _runner.StartAsync(request, cancellationToken));
+    public bool TryStart(AgentRunRequest request)
+    {
+        var runner = _runners.Create(request.RunId, request.Conversational);
+        return TryExecute(request.RunId, cancellationToken => runner.StartAsync(request, cancellationToken));
+    }
 
     /// <summary>
-    /// Resumes the run in the background. Returns <see langword="false"/> when the run
-    /// id is already executing.
+    /// Resumes the run in the background. <paramref name="conversational"/> comes from
+    /// the run's checkpoint, so the resumed run gets the same tool scope it started
+    /// with. Returns <see langword="false"/> when the run id is already executing.
     /// </summary>
-    public bool TryResume(string runId) =>
-        TryExecute(runId, cancellationToken => _runner.ResumeAsync(runId, cancellationToken));
+    public bool TryResume(string runId, bool conversational)
+    {
+        var runner = _runners.Create(runId, conversational);
+        return TryExecute(runId, cancellationToken => runner.ResumeAsync(runId, cancellationToken));
+    }
 
     /// <summary>
     /// Continues a chat with the next user message in the background. Returns
     /// <see langword="false"/> when the run id is already executing.
     /// </summary>
-    public bool TryContinue(string runId, string userMessage) =>
-        TryExecute(runId, cancellationToken => _runner.ContinueAsync(runId, userMessage, cancellationToken));
+    public bool TryContinue(string runId, string userMessage)
+    {
+        var runner = _runners.Create(runId, conversational: true);
+        return TryExecute(runId, cancellationToken => runner.ContinueAsync(runId, userMessage, cancellationToken));
+    }
 
     private bool TryExecute(string runId, Func<CancellationToken, Task<AgentRunResult>> execute)
     {

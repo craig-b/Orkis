@@ -34,7 +34,7 @@ internal static class DaemonEndpoints
             static (
                 IOptions<OrkisRegistrations> registrations,
                 DaemonInfo info,
-                IEnumerable<ITool> tools,
+                RunnerFactory runners,
                 IServiceProvider provider
             ) =>
             {
@@ -56,7 +56,7 @@ internal static class DaemonEndpoints
                         Sandbox = info.Sandbox,
                         Memory = info.MemoryEnabled,
                         CorpusRetrieval = info.CorpusEnabled,
-                        Tools = [.. tools.Select(static t => t.Descriptor.Name)],
+                        Tools = runners.ToolNames,
                         CatalogTools = catalog is null ? [] : [.. catalog.Tools.Select(static t => t.Descriptor.Name)],
                     }
                 );
@@ -114,6 +114,16 @@ internal static class DaemonEndpoints
                     ModelKey = body.Model is { Length: > 0 } key ? key : null,
                     Budget = new RunBudget { MaxTokens = body.MaxTokens, MaxToolCalls = body.MaxToolCalls },
                 };
+                if (body.Chat)
+                {
+                    // A chat is a durable working context: its recall scope matches the
+                    // scope its memory tools write to (see RunnerFactory).
+                    request = request with
+                    {
+                        MemoryScope = $"chat-{request.RunId}",
+                    };
+                }
+
                 executor.TryStart(request);
                 return Results.Accepted($"/v1/runs/{request.RunId}", new RunAcceptedResponse { RunId = request.RunId });
             }
@@ -177,7 +187,7 @@ internal static class DaemonEndpoints
                     );
                 }
 
-                if (!executor.TryResume(runId))
+                if (!executor.TryResume(runId, summary.Conversational))
                 {
                     return Results.Conflict(new { error = $"Run '{runId}' is already executing." });
                 }
@@ -323,6 +333,17 @@ internal static class DaemonEndpoints
             "/v1/artifacts",
             static async (IArtifactStore artifacts, CancellationToken cancellationToken) =>
                 Results.Ok(await artifacts.ListAsync(cancellationToken))
+        );
+
+        app.MapGet(
+            "/v1/artifacts/{name}",
+            static async (string name, IArtifactStore artifacts, CancellationToken cancellationToken) =>
+            {
+                var content = await artifacts.OpenAsync(name, cancellationToken);
+                return content is null
+                    ? Results.NotFound()
+                    : Results.Stream(content, "application/octet-stream", fileDownloadName: name);
+            }
         );
     }
 

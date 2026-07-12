@@ -54,9 +54,12 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   (`run_continued`/`turn_completed`), model keys, and context compaction all apply
   unchanged; `POST /v1/runs/{id}/messages` + `GET /v1/runs/{id}/transcript` on the
   wire, `orkis chat` interactively (one SSE stream spans turns and daemon restarts
-  adopt chats like any run). Remaining: per-chat `WorkspaceKey`/`MemoryScope` wiring
-  in the daemon (the request fields exist; the daemon currently uses one global
-  workspace), and an optional per-turn budget cap.
+  adopt chats like any run). Chats are durable working contexts: the daemon builds a
+  per-run `AgentRunner` (`RunnerFactory` — the composition root's prerogative, no tool
+  ABI change), so a chat's shell/artifact/memory tools are scoped to
+  `chat-<runId>` workspace and memory scope, deterministically reconstructed on
+  resume, while one-shot runs share the default workspace and global memory.
+  Remaining: an optional per-turn budget cap.
 - **Scheduled runs** `[idea]` — cron expression + a run template (prompt, model key,
   supervisor key, budget, tool restriction via the existing
   `AgentRunRequest.ToolNames` — autonomy bounded by *capability*, e.g. yolo with
@@ -86,7 +89,8 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   chats land), cost accounting, artifact browser (needs a content endpoint —
   `GET /v1/artifacts/{name}` doesn't exist yet), audit view over supervision
   decisions (already in the event log), MCP/schedule management (the runtime-object
-  APIs), prompt templates. Prerequisite endpoints: transcript, artifact content.
+  APIs), prompt templates. Prerequisite endpoints are all built: transcript and
+  artifact content (`GET /v1/artifacts/{name}`, `orkis artifacts <name> [-o]`).
 - **Notifications** `[idea]` — an unattended run that parks awaiting approval stalls
   silently today. A webhook/ntfy hook on `run_paused` (and `run_completed` for
   schedules) is cheap and changes usability out of proportion to its size: approvals

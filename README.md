@@ -203,9 +203,10 @@ orkis chat "hello"                       # interactive multi-turn chat
 ```
 
 A chat is a run whose turns end awaiting your next message instead of
-terminating: one growing transcript, one budget, one working context (its
-workspace and memory scope carry across turns), with supervision applying to
-every tool call along the way. Leave with an empty message and rejoin later —
+terminating: one growing transcript, one budget, one working context — each chat
+gets its own persistent workspace and memory scope (`chat-<run-id>`), so files
+and memories accumulate per conversation — with supervision applying to every
+tool call along the way. Leave with an empty message and rejoin later —
 even after a daemon restart — with `orkis chat --run <run-id>`; over the wire
 it is `POST /v1/runs/{id}/messages` plus `GET /v1/runs/{id}/transcript`.
 

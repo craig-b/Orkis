@@ -234,6 +234,39 @@ public sealed class OrkisClient : IDisposable
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Opens an artifact's content for reading, or <see langword="null"/> when no
+    /// such artifact exists. The caller disposes the stream.
+    /// </summary>
+    public async Task<Stream?> OpenArtifactAsync(string name, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(name);
+
+        var response = await _http
+            .GetAsync(
+                new Uri($"/v1/artifacts/{Uri.EscapeDataString(name)}", UriKind.Relative),
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            response.Dispose();
+            return null;
+        }
+
+        try
+        {
+            await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+            return await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            response.Dispose();
+            throw;
+        }
+    }
+
     /// <summary>All stored artifacts, oldest first.</summary>
     public async Task<IReadOnlyList<ArtifactInfo>> ListArtifactsAsync(CancellationToken cancellationToken = default)
     {

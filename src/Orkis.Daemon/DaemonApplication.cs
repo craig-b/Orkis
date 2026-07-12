@@ -185,13 +185,6 @@ public static class DaemonApplication
                     settings.MemoryDatabasePath
                     ?? throw new InvalidOperationException("Embeddings are on but no memory database path is set.")
             );
-            services.AddSingleton<ITool>(provider => new SaveMemoryTool(
-                provider.GetRequiredService<IMemoryStore>(),
-                timeProvider: provider.GetRequiredService<TimeProvider>()
-            ));
-            services.AddSingleton<ITool>(provider => new SearchMemoriesTool(
-                provider.GetRequiredService<IMemoryStore>()
-            ));
 
             if (settings.CorpusDirectory is { Length: > 0 })
             {
@@ -206,27 +199,13 @@ public static class DaemonApplication
                         )
                 );
                 services.AddOrkisChatClientReranker();
-                services.AddSingleton<ITool>(provider => new RetrievalTool(
-                    provider.GetRequiredService<IRetriever>(),
-                    provider.GetService<IReranker>()
-                ));
             }
         }
 
-        services.AddSingleton<ITool>(provider => new ShellTool(
-            provider.GetServices<ISandbox>(),
-            settings.WorkspaceKey
-        ));
-        services.AddSingleton<ITool>(provider => new PromoteArtifactTool(
-            provider.GetServices<ISandbox>(),
-            provider.GetRequiredService<IArtifactStore>(),
-            settings.WorkspaceKey
-        ));
-        services.AddSingleton<ITool>(provider => new StageArtifactTool(
-            provider.GetServices<ISandbox>(),
-            provider.GetRequiredService<IArtifactStore>(),
-            settings.WorkspaceKey
-        ));
+        // Storage-bearing tools (shell, artifacts, memory) are not registered as
+        // singletons: RunnerFactory builds them per run, so chats get their own
+        // workspace and memory scope.
+        services.AddSingleton(provider => new RunnerFactory(provider, settings));
 
         if (mcpToolSet is not null)
         {

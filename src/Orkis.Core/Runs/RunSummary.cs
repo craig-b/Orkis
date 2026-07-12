@@ -17,6 +17,9 @@ public sealed record RunSummary
     /// <summary>Key of the supervisor governing the run.</summary>
     public required string SupervisorKey { get; init; }
 
+    /// <summary>Whether the run is a chat (turns end awaiting the user).</summary>
+    public bool Conversational { get; init; }
+
     /// <summary>Total input tokens consumed so far.</summary>
     public long InputTokens { get; init; }
 

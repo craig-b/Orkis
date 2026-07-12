@@ -22,6 +22,9 @@ public sealed class DaemonFixture : IAsyncLifetime
     /// <summary>The daemon's socket, for tests that bring their own client.</summary>
     public string SocketPath { get; private set; } = null!;
 
+    /// <summary>The daemon's services, for tests that seed state behind the API.</summary>
+    public IServiceProvider Services => _app!.Services;
+
     public static JsonSerializerOptions JsonOptions { get; } =
         new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
 

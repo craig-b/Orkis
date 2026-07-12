@@ -91,6 +91,64 @@ public sealed class OrkisClientTests(DaemonFixture fixture) : IClassFixture<Daem
     }
 
     [Fact]
+    public async Task ChatsGetTheirOwnWorkspaceWhileOneShotsShareTheDefault()
+    {
+        // The offline script's shell command prints its working directory, which
+        // carries the workspace key — observable isolation, not implementation trust.
+        var chat = await _client.StartRunAsync(
+            new StartRunRequest
+            {
+                Prompt = "Run the greeting command.",
+                SupervisorKey = "yolo",
+                Chat = true,
+            }
+        );
+        await WaitForRunAsync(chat.RunId, static r => !r.Active && r.Status == RunStatus.AwaitingUser);
+
+        var oneShot = await _client.StartRunAsync(
+            new StartRunRequest { Prompt = "Run the greeting command.", SupervisorKey = "yolo" }
+        );
+        await WaitForRunAsync(oneShot.RunId, static r => !r.Active && r.Status == RunStatus.Completed);
+
+        Assert.Contains($"workspaces/chat-{chat.RunId}", await ToolOutputAsync(chat.RunId));
+        Assert.Contains("workspaces/tests-", await ToolOutputAsync(oneShot.RunId));
+    }
+
+    private async Task<string> ToolOutputAsync(string runId)
+    {
+        await foreach (var runEvent in _client.StreamEventsAsync(runId))
+        {
+            if (runEvent is ToolCallCompletedEvent completed)
+            {
+                return completed.ContentPreview;
+            }
+        }
+
+        return "";
+    }
+
+    [Fact]
+    public async Task ArtifactContentDownloadsAndAbsentArtifactsAreNull()
+    {
+        Assert.Null(await _client.OpenArtifactAsync("no-such-artifact"));
+
+        var store = (Orkis.Artifacts.IArtifactStore)
+            fixture.Services.GetService(typeof(Orkis.Artifacts.IArtifactStore))!;
+        using (var content = new MemoryStream("artifact bytes"u8.ToArray()))
+        {
+            await store.SaveAsync("download-me.txt", content);
+        }
+
+        var stream = await _client.OpenArtifactAsync("download-me.txt");
+        Assert.NotNull(stream);
+        await using (stream)
+        {
+            using var reader = new StreamReader(stream);
+            Assert.Equal("artifact bytes", await reader.ReadToEndAsync());
+        }
+    }
+
+    [Fact]
     public async Task MessagesToANonChatRunConflict()
     {
         var accepted = await _client.StartRunAsync(

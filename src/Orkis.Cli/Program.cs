@@ -379,13 +379,54 @@ dashCommand.SetAction(
 root.Subcommands.Add(dashCommand);
 
 // artifacts ----------------------------------------------------------------------
-var artifactsCommand = new Command("artifacts", "List promoted artifacts.");
+var artifactNameArgument = new Argument<string?>("name")
+{
+    Description = "Artifact to download; omitted lists them.",
+    Arity = ArgumentArity.ZeroOrOne,
+};
+var artifactOutputOption = new Option<string?>("--output", "-o")
+{
+    Description = "Write the artifact here instead of standard output.",
+};
+var artifactsCommand = new Command("artifacts", "List promoted artifacts, or download one.");
+artifactsCommand.Arguments.Add(artifactNameArgument);
+artifactsCommand.Options.Add(artifactOutputOption);
 artifactsCommand.SetAction(
     (parseResult, cancellationToken) =>
         WithClient(
             parseResult,
             async client =>
             {
+                if (parseResult.GetValue(artifactNameArgument) is { Length: > 0 } artifactName)
+                {
+                    var content = await client.OpenArtifactAsync(artifactName, cancellationToken);
+                    if (content is null)
+                    {
+                        AnsiConsole.MarkupLine($"[red]error:[/] no artifact named '{artifactName.EscapeMarkup()}'.");
+                        return 1;
+                    }
+
+                    await using (content)
+                    {
+                        if (parseResult.GetValue(artifactOutputOption) is { Length: > 0 } outputPath)
+                        {
+                            var file = File.Create(outputPath);
+                            await using (file)
+                            {
+                                await content.CopyToAsync(file, cancellationToken);
+                            }
+
+                            Console.WriteLine(outputPath);
+                        }
+                        else
+                        {
+                            await content.CopyToAsync(Console.OpenStandardOutput(), cancellationToken);
+                        }
+                    }
+
+                    return 0;
+                }
+
                 var artifacts = await client.ListArtifactsAsync(cancellationToken);
                 if (artifacts.Count == 0)
                 {
