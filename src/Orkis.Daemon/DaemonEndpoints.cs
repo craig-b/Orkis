@@ -426,6 +426,66 @@ internal static class DaemonEndpoints
             }
         );
 
+        app.MapPatch(
+            "/v1/schedules/{id}",
+            static async (
+                string id,
+                UpdateScheduleRequest body,
+                IScheduleStore schedules,
+                ISupervisorResolver supervisors,
+                CancellationToken cancellationToken
+            ) =>
+            {
+                if (await schedules.GetAsync(id, cancellationToken) is not { } existing)
+                {
+                    return Results.NotFound();
+                }
+
+                if (body.Cron is { } cron && !TryParseCron(cron))
+                {
+                    return Results.BadRequest(new { error = $"Invalid cron expression '{cron}'." });
+                }
+
+                if (body.SupervisorKey is { } supervisorKey)
+                {
+                    try
+                    {
+                        supervisors.Resolve(supervisorKey);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        return Results.BadRequest(new { error = $"Unknown supervisor key '{supervisorKey}'." });
+                    }
+                }
+
+                if (
+                    body.Continuity is { } continuityText
+                    && !Enum.TryParse<ScheduleContinuity>(continuityText, ignoreCase: true, out _)
+                )
+                {
+                    return Results.BadRequest(new { error = $"Unknown continuity '{continuityText}'." });
+                }
+
+                // A null field leaves that part unchanged; MaxTokens updates only when provided,
+                // so a schedule's unlimited budget is preserved unless a new cap is set.
+                var updated = existing with
+                {
+                    Name = body.Name ?? existing.Name,
+                    Cron = body.Cron ?? existing.Cron,
+                    Prompt = body.Prompt ?? existing.Prompt,
+                    SupervisorKey = body.SupervisorKey ?? existing.SupervisorKey,
+                    ModelKey = body.Model ?? existing.ModelKey,
+                    Continuity = body.Continuity is { } value
+                        ? Enum.Parse<ScheduleContinuity>(value, ignoreCase: true)
+                        : existing.Continuity,
+                    MaxTokens = body.MaxTokens ?? existing.MaxTokens,
+                    Enabled = body.Enabled ?? existing.Enabled,
+                };
+                await schedules.SaveAsync(updated, cancellationToken);
+                return Results.Ok(ToScheduleResponse(updated));
+            }
+        );
+
         app.MapDelete(
             "/v1/schedules/{id}",
             static async (string id, IScheduleStore schedules, CancellationToken cancellationToken) =>

@@ -74,6 +74,17 @@ export interface CreateScheduleRequest {
   continuity?: string;
 }
 
+export interface UpdateScheduleRequest {
+  name?: string;
+  cron?: string;
+  prompt?: string;
+  supervisorKey?: string;
+  model?: string;
+  continuity?: string;
+  maxTokens?: number;
+  enabled?: boolean;
+}
+
 export interface McpServerResponse {
   name: string;
   server: string;

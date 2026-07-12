@@ -34,6 +34,56 @@ public sealed class ScheduleTests(DaemonFixture fixture) : IClassFixture<DaemonF
     }
 
     [Fact]
+    public async Task UpdatePatchesOnlyTheGivenFields()
+    {
+        var created = await _client.CreateScheduleAsync(
+            new CreateScheduleRequest
+            {
+                Name = "editable",
+                Cron = "0 3 * * *",
+                Prompt = "review",
+                Continuity = "sharedStorage",
+            }
+        );
+        Assert.True(created.Enabled);
+
+        try
+        {
+            // A one-field patch pauses it and leaves everything else untouched.
+            var paused = await _client.UpdateScheduleAsync(created.Id, new UpdateScheduleRequest { Enabled = false });
+            Assert.NotNull(paused);
+            Assert.False(paused.Enabled);
+            Assert.Equal("review", paused.Prompt);
+            Assert.Equal("SharedStorage", paused.Continuity);
+
+            // Other fields update in isolation; enabled stays as last set.
+            var edited = await _client.UpdateScheduleAsync(
+                created.Id,
+                new UpdateScheduleRequest { Cron = "0 4 * * *", Prompt = "audit" }
+            );
+            Assert.NotNull(edited);
+            Assert.Equal("0 4 * * *", edited.Cron);
+            Assert.Equal("audit", edited.Prompt);
+            Assert.False(edited.Enabled);
+
+            // Validation still applies, and the change is not persisted.
+            var badCron = await Assert.ThrowsAsync<OrkisApiException>(() =>
+                _client.UpdateScheduleAsync(created.Id, new UpdateScheduleRequest { Cron = "nope" })
+            );
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, badCron.StatusCode);
+
+            // A missing schedule patches to null.
+            Assert.Null(
+                await _client.UpdateScheduleAsync("does-not-exist", new UpdateScheduleRequest { Enabled = true })
+            );
+        }
+        finally
+        {
+            await _client.DeleteScheduleAsync(created.Id);
+        }
+    }
+
+    [Fact]
     public async Task InvalidCronAndUnknownContinuityAreRejected()
     {
         var badCron = await Assert.ThrowsAsync<OrkisApiException>(() =>

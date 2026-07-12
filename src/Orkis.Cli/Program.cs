@@ -423,6 +423,31 @@ removeScheduleCommand.SetAction(
         )
 );
 schedulesCommand.Subcommands.Add(removeScheduleCommand);
+
+var enableIdArgument = new Argument<string>("id") { Description = "The schedule to enable." };
+var enableScheduleCommand = new Command("enable", "Resume a paused schedule.");
+enableScheduleCommand.Arguments.Add(enableIdArgument);
+enableScheduleCommand.SetAction(
+    (parseResult, cancellationToken) =>
+        WithClient(
+            parseResult,
+            client => SetScheduleEnabledAsync(client, parseResult.GetValue(enableIdArgument)!, true, cancellationToken)
+        )
+);
+schedulesCommand.Subcommands.Add(enableScheduleCommand);
+
+var disableIdArgument = new Argument<string>("id") { Description = "The schedule to disable." };
+var disableScheduleCommand = new Command("disable", "Pause a schedule without removing it.");
+disableScheduleCommand.Arguments.Add(disableIdArgument);
+disableScheduleCommand.SetAction(
+    (parseResult, cancellationToken) =>
+        WithClient(
+            parseResult,
+            client =>
+                SetScheduleEnabledAsync(client, parseResult.GetValue(disableIdArgument)!, false, cancellationToken)
+        )
+);
+schedulesCommand.Subcommands.Add(disableScheduleCommand);
 root.Subcommands.Add(schedulesCommand);
 
 // mcp ----------------------------------------------------------------------------
@@ -682,6 +707,25 @@ static async Task<int> DecideAsync(
     // The daemon continues the run once its approvals are decided — no resume here.
     await client.DecideApprovalAsync(runId, callId, decision, cancellationToken);
     Console.WriteLine($"{decision.Verdict}d: {callId}");
+    return 0;
+}
+
+static async Task<int> SetScheduleEnabledAsync(
+    OrkisClient client,
+    string id,
+    bool enabled,
+    CancellationToken cancellationToken
+)
+{
+    if (
+        await client.UpdateScheduleAsync(id, new UpdateScheduleRequest { Enabled = enabled }, cancellationToken) is null
+    )
+    {
+        AnsiConsole.MarkupLine($"[red]error:[/] no schedule '{id.EscapeMarkup()}'.");
+        return 1;
+    }
+
+    Console.WriteLine($"{(enabled ? "enabled" : "disabled")} {id}");
     return 0;
 }
 

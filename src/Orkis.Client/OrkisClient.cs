@@ -299,6 +299,32 @@ public sealed class OrkisClient : IDisposable
         return await ReadAsync<ScheduleResponse>(response, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Updates a schedule's fields (null leaves a field unchanged). Returns null when it did not exist.</summary>
+    public async Task<ScheduleResponse?> UpdateScheduleAsync(
+        string id,
+        UpdateScheduleRequest request,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentException.ThrowIfNullOrEmpty(id);
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var response = await _http
+            .PatchAsJsonAsync(
+                new Uri($"/v1/schedules/{Uri.EscapeDataString(id)}", UriKind.Relative),
+                request,
+                JsonOptions,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        return await ReadAsync<ScheduleResponse>(response, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Deletes a schedule. Returns <see langword="false"/> when it did not exist.</summary>
     public async Task<bool> DeleteScheduleAsync(string id, CancellationToken cancellationToken = default)
     {

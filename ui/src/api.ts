@@ -11,6 +11,7 @@ import type {
   RunResponse,
   ScheduleResponse,
   TranscriptMessage,
+  UpdateScheduleRequest,
 } from "./types.js";
 
 /** Raised on 401 so views can hand off to the login overlay. */
@@ -74,6 +75,12 @@ export const api = {
   artifacts: () => request<ArtifactInfo[]>("/v1/artifacts"),
   schedules: () => request<ScheduleResponse[]>("/v1/schedules"),
   createSchedule: (body: CreateScheduleRequest) => request<ScheduleResponse>("/v1/schedules", json(body)),
+  updateSchedule: (id: string, body: UpdateScheduleRequest) =>
+    request<ScheduleResponse>(`/v1/schedules/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   deleteSchedule: (id: string) =>
     request<void>(`/v1/schedules/${encodeURIComponent(id)}`, { method: "DELETE" }),
   mcpServers: () => request<McpServerResponse[]>("/v1/mcp-servers"),

@@ -142,6 +142,30 @@ public sealed record CreateScheduleRequest
     public bool Enabled { get; init; } = true;
 }
 
+/// <summary>
+/// Body of <c>PATCH /v1/schedules/{id}</c>. Every field is optional; a null field leaves
+/// that part of the schedule unchanged, so enable/disable is a one-field patch.
+/// </summary>
+public sealed record UpdateScheduleRequest
+{
+    public string? Name { get; init; }
+
+    public string? Cron { get; init; }
+
+    public string? Prompt { get; init; }
+
+    public string? SupervisorKey { get; init; }
+
+    public string? Model { get; init; }
+
+    /// <summary><c>fresh</c>, <c>sharedStorage</c>, or <c>sharedStorageWithHandoff</c>.</summary>
+    public string? Continuity { get; init; }
+
+    public long? MaxTokens { get; init; }
+
+    public bool? Enabled { get; init; }
+}
+
 /// <summary>A schedule as reported by <c>GET /v1/schedules</c>.</summary>
 public sealed record ScheduleResponse
 {

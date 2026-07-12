@@ -66,6 +66,15 @@ export class SchedulesView extends LitElement {
     }
   }
 
+  private async toggleEnabled(id: string, enabled: boolean): Promise<void> {
+    try {
+      await api.updateSchedule(id, { enabled });
+      await this.refresh();
+    } catch (error) {
+      if (error instanceof Unauthorized) this.unauthorized();
+    }
+  }
+
   override render() {
     return html`
       <h2>Schedules</h2>
@@ -89,17 +98,21 @@ export class SchedulesView extends LitElement {
       ${this.schedules.length === 0 ? html`<p class="dim">no schedules</p>` : ""}
       ${this.schedules.map(
         (schedule) => html`
-          <div class="row">
+          <div class="row ${schedule.enabled ? "" : "paused"}">
             <div>
               <strong>${schedule.name}</strong>
               <code>${schedule.cron}</code>
               <span class="dim">${schedule.supervisorKey} · ${schedule.continuity}</span>
+              ${schedule.enabled ? "" : html`<span class="tag">paused</span>`}
             </div>
             <div class="meta">
               <span class="dim">
                 ${schedule.lastFiredAt ? `last fired ${time(schedule.lastFiredAt)}` : "never fired"}
                 ${schedule.lastRunId ? html`(${shortId(schedule.lastRunId)})` : ""}
               </span>
+              <button @click=${() => void this.toggleEnabled(schedule.id, !schedule.enabled)}>
+                ${schedule.enabled ? "pause" : "resume"}
+              </button>
               <button class="del" @click=${() => void this.deleteSchedule(schedule.id)}>remove</button>
             </div>
           </div>
@@ -119,6 +132,8 @@ export class SchedulesView extends LitElement {
       border-bottom: 1px solid var(--line); padding: 0.6rem 0; gap: 1rem;
     }
     code { background: var(--panel); padding: 0.1rem 0.4rem; border-radius: 0.3rem; margin: 0 0.5rem; }
+    .row.paused { opacity: 0.6; }
+    .tag { background: var(--panel); border-radius: 0.3rem; padding: 0.1rem 0.4rem; margin-left: 0.5rem; font-size: 0.85em; }
     .meta { display: flex; gap: 0.8rem; align-items: center; }
     button.del { background: var(--err-bg); }
     .dim { color: var(--dim); }

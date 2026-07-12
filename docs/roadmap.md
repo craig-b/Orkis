@@ -78,9 +78,10 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   chat continuation across firings is deliberately *not* offered (unbounded transcripts
   are compaction debt with no audit benefit). Handoff capture is event-driven
   (`ScheduleHandoffService` on the run-event stream), so a firing that parks for
-  approval and resumes still contributes its note. Remaining: a `write_handoff` tool if
-  the final-text-as-handoff proves mushy, and PATCH/enable-disable over the wire (the
-  model supports it; only create/list/delete are exposed).
+  approval and resumes still contributes its note. Editing is built: `PATCH
+  /v1/schedules/{id}` patches any subset of fields (null leaves a field unchanged),
+  with `orkis schedules enable/disable` and a UI pause/resume toggle over it. Remaining:
+  a `write_handoff` tool if the final-text-as-handoff proves mushy.
 - **Web UI** `[idea]` — the compose-stack UI, and the thing that makes the daemon
   usable day-to-day. **Design settled (July 2026): the daemon has no face and no
   network.** The daemon listens on its Unix socket only; a separate `Orkis.Web`
