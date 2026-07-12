@@ -1,0 +1,50 @@
+namespace Orkis.Daemon;
+
+/// <summary>
+/// Resolved configuration for one daemon instance. <c>Program</c> builds this from
+/// environment variables and arguments; tests construct it directly.
+/// </summary>
+public sealed record DaemonSettings
+{
+    /// <summary>Path of the Unix domain socket the daemon listens on.</summary>
+    public required string SocketPath { get; init; }
+
+    /// <summary>Root directory for run checkpoints.</summary>
+    public required string CheckpointDirectory { get; init; }
+
+    /// <summary>Root directory for run event logs.</summary>
+    public required string EventDirectory { get; init; }
+
+    /// <summary>Root directory for the durable approval inbox.</summary>
+    public required string ApprovalDirectory { get; init; }
+
+    /// <summary>Root directory for the artifact store.</summary>
+    public required string ArtifactDirectory { get; init; }
+
+    /// <summary>Persistent workspace shared by the shell and artifact tools.</summary>
+    public string WorkspaceKey { get; init; } = "default";
+
+    /// <summary>Use the scripted offline model instead of a live provider.</summary>
+    public bool Offline { get; init; }
+
+    /// <summary>Live model provider: <c>anthropic</c> or <c>openai</c>. Ignored when offline.</summary>
+    public string? Provider { get; init; }
+
+    /// <summary>API key for the live provider. Ignored when offline.</summary>
+    public string? ApiKey { get; init; }
+
+    /// <summary>Model id for live runs. Ignored when offline.</summary>
+    public string? Model { get; init; }
+
+    /// <summary>Isolation sandbox: <c>process</c>, <c>bubblewrap</c>, or <c>firecracker</c>.</summary>
+    public string Sandbox { get; init; } = "process";
+
+    /// <summary>Guest kernel image path; required when the sandbox is firecracker.</summary>
+    public string? FirecrackerKernelPath { get; init; }
+
+    /// <summary>Guest rootfs image path; required when the sandbox is firecracker.</summary>
+    public string? FirecrackerRootfsPath { get; init; }
+
+    /// <summary>Grant firecracker VMs public-internet-only egress (host setup required).</summary>
+    public bool FirecrackerEgress { get; init; }
+}

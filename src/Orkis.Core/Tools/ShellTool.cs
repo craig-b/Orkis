@@ -1,8 +1,7 @@
 using System.Text.Json;
 using Orkis.Sandboxing;
-using Orkis.Tools;
 
-namespace Orkis.Host;
+namespace Orkis.Tools;
 
 /// <summary>
 /// Runs a shell command. Given the supervisor's required minimum isolation, it selects

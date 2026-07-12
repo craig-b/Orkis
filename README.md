@@ -46,7 +46,8 @@ src/
   Orkis.Rag.*             Ingestion, vector store, and retrieval implementations
   Orkis.Runs.*            Run-state persistence (checkpoint store, approval inbox)
   Orkis.Sandbox.*         Sandbox execution implementations (process, bubblewrap, Firecracker)
-  Orkis.Host              Composition root and demo entry point
+  Orkis.Host              Composition root and demo entry point (CLI, in-process)
+  Orkis.Daemon            Composition root as a long-lived service (HTTP over a Unix socket)
 tests/
 ```
 
@@ -149,6 +150,42 @@ With `--ai` (live runs only), the model itself is the first-line reviewer: it
 approves routine actions — optionally requiring a sandbox — denies clear policy
 violations with a reason the agent sees, and escalates anything it is unsure of
 into the same approval inbox for a human.
+
+## The daemon
+
+`Orkis.Daemon` hosts the same stack as a long-lived process — the dockerd shape.
+The daemon owns the stateful side (runs, checkpoints, the approval inbox,
+sandboxes and workspaces); thin clients speak HTTP/JSON over a Unix domain
+socket. It is configured by the same environment variables as the CLI host, so
+the two composition roots are interchangeable over shared state:
+
+```sh
+dotnet run --project src/Orkis.Daemon -- --offline     # or live, with an API key
+
+SOCK=${XDG_RUNTIME_DIR:-~/.local/share/orkis}/orkis/orkis.sock
+curl --unix-socket "$SOCK" http://d/v1/runs -X POST \
+  -H 'content-type: application/json' -d '{"prompt":"Roll 3 dice."}'
+curl --unix-socket "$SOCK" http://d/v1/runs                  # registry (adopts checkpoints on restart)
+curl --unix-socket "$SOCK" http://d/v1/approvals             # pending decisions
+curl --unix-socket "$SOCK" http://d/v1/approvals/<run>/<call> -X POST \
+  -H 'content-type: application/json' -d '{"verdict":"approve","sandboxLevel":"standard"}'
+curl --unix-socket "$SOCK" http://d/v1/runs/<run>/resume -X POST
+```
+
+Supervision is queue-based by default (`supervisorKey` selects `yolo` or, on live
+runs, `ai`), so every risky action is a pending approval on the wire.
+
+A run's history streams as Server-Sent Events whose payloads are the run's typed
+events — the same self-describing JSON the durable log stores, with the SSE id
+carrying the event sequence, so `Last-Event-ID` reconnection replays exactly the
+missed events:
+
+```sh
+curl -N --unix-socket "$SOCK" "http://d/v1/runs/<run>/events?follow=true"
+```
+
+Access control is the socket itself (owner-only permissions); the daemon refuses
+to start when another instance already listens on its socket.
 
 ## Development
 

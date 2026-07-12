@@ -1,9 +1,8 @@
 using System.Text.Json;
 using Orkis.Artifacts;
 using Orkis.Sandboxing;
-using Orkis.Tools;
 
-namespace Orkis.Host;
+namespace Orkis.Tools;
 
 /// <summary>
 /// Promotes a file from the workload's persistent workspace into the artifact store —

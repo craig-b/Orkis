@@ -2,6 +2,7 @@
     <Folder Name="/src/">
         <Project Path="src/Orkis.Abstractions/Orkis.Abstractions.csproj" />
         <Project Path="src/Orkis.Core/Orkis.Core.csproj" />
+        <Project Path="src/Orkis.Daemon/Orkis.Daemon.csproj" />
         <Project Path="src/Orkis.Host/Orkis.Host.csproj" />
         <Project Path="src/Orkis.Rag/Orkis.Rag.csproj" />
         <Project Path="src/Orkis.Rag.Html/Orkis.Rag.Html.csproj" />
@@ -16,6 +17,7 @@
     </Folder>
     <Folder Name="/tests/">
         <Project Path="tests/Orkis.Core.Tests/Orkis.Core.Tests.csproj" />
+        <Project Path="tests/Orkis.Daemon.Tests/Orkis.Daemon.Tests.csproj" />
         <Project Path="tests/Orkis.Memory.Sqlite.Tests/Orkis.Memory.Sqlite.Tests.csproj" />
         <Project Path="tests/Orkis.Rag.Tests/Orkis.Rag.Tests.csproj" />
         <Project Path="tests/Orkis.Runs.FileSystem.Tests/Orkis.Runs.FileSystem.Tests.csproj" />

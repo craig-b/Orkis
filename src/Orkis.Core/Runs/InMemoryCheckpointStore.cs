@@ -26,4 +26,8 @@ public sealed class InMemoryCheckpointStore : ICheckpointStore
     /// <inheritdoc />
     public Task<RunCheckpoint?> LoadLatestAsync(string runId, CancellationToken cancellationToken = default) =>
         Task.FromResult(_latestByRun.TryGetValue(runId, out var checkpoint) ? checkpoint : null);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<RunCheckpoint>> ListLatestAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<RunCheckpoint>>([.. _latestByRun.Values]);
 }

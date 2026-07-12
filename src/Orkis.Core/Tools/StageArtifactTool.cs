@@ -1,9 +1,8 @@
 using System.Text.Json;
 using Orkis.Artifacts;
 using Orkis.Sandboxing;
-using Orkis.Tools;
 
-namespace Orkis.Host;
+namespace Orkis.Tools;
 
 /// <summary>
 /// Copies an artifact from the artifact store into the workload's persistent

@@ -48,6 +48,37 @@ public sealed class FileCheckpointStore : ICheckpointStore
             return null;
         }
 
+        return await LoadLatestFromDirectoryAsync(runDirectory, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<RunCheckpoint>> ListLatestAsync(CancellationToken cancellationToken = default)
+    {
+        if (!Directory.Exists(_rootPath))
+        {
+            return [];
+        }
+
+        // Run ids come from the checkpoints themselves: directory names are sanitized
+        // (SafePathNames) and cannot be mapped back to the original id.
+        var checkpoints = new List<RunCheckpoint>();
+        foreach (var runDirectory in Directory.EnumerateDirectories(_rootPath))
+        {
+            var checkpoint = await LoadLatestFromDirectoryAsync(runDirectory, cancellationToken).ConfigureAwait(false);
+            if (checkpoint is not null)
+            {
+                checkpoints.Add(checkpoint);
+            }
+        }
+
+        return checkpoints;
+    }
+
+    private static async Task<RunCheckpoint?> LoadLatestFromDirectoryAsync(
+        string runDirectory,
+        CancellationToken cancellationToken
+    )
+    {
         string? latestPath = null;
         var latestSequence = long.MinValue;
         foreach (var path in Directory.EnumerateFiles(runDirectory, "*.json"))

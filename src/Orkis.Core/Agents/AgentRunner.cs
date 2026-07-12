@@ -24,7 +24,8 @@ public sealed class AgentRunner
 {
     private const string SearchToolsName = "search_tools";
 
-    private static readonly JsonSerializerOptions StateJsonOptions = CreateStateJsonOptions();
+    // Shared with RunRegistry, which reads checkpointed state back into summaries.
+    internal static readonly JsonSerializerOptions StateJsonOptions = CreateStateJsonOptions();
 
     private static readonly ToolDescriptor SearchToolsDescriptor = new()
     {

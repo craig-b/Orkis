@@ -57,24 +57,40 @@ The through-lines these ideas are meant to respect:
   `IChunkStore`/`IRetriever` interfaces, for corpora beyond what `SqliteVectorStore`'s
   full-scan cosine handles (tens of thousands of chunks). pgvector doubles as part of
   the compose stack's Postgres multi-duty story.
-- **Retrieval wired into the agent loop** `[idea]` — design settled: a
-  `search_corpus` tool over `IRetriever` (the agent decides when to look, consistent
-  with `search_tools`), reranking top-N to top-K inside the tool when an `IReranker`
-  is registered, results rendered with chunk ids and source metadata so answers can
-  cite. Ambient per-message injection can come later as a context-policy feature.
+- **Ambient retrieval injection** `[idea]` — what remains of "retrieval wired into
+  the agent loop" now the `search_corpus` tool is built (agent-directed lookup over
+  `IRetriever`, reranking top-N to top-K when an `IReranker` is registered, results
+  rendered with chunk ids and source metadata for citation): injecting relevant
+  chunks per message as a context-policy feature, instead of on the agent's
+  initiative.
 - **Execution floor** `[idea]` — a global minimum sandbox level ("everything runs in
   Firecracker"). Distinct from workspace flow policy: this governs where *code* runs, not
   where *data* goes.
-- **Daemon host + client protocol** `[idea]` — a long-lived host process that owns the
-  stateful side (run registry, checkpoint adoption on restart, supervision inbox,
-  workspace/sandbox lifetimes, privileged network setup), with thin UIs — CLI, web,
-  editor — talking to it over a wire protocol (gRPC over a Unix socket or SSE/SignalR).
-  The dockerd/containerd shape. The daemon is one composition root among several, never
-  required: the libraries stay embeddable in-process. The key design surface is the
-  typed run-event stream (turn progress, tool calls, cost, pending approvals), which
-  doubles as the observability and eval-recording surface. Its prerequisites are now
-  built: the durable checkpoint store (`FileCheckpointStore`) and the queue-based
-  supervisor (`QueueSupervisor` over `IApprovalInbox`) make run state detachable.
+- **Daemon clients + protocol growth** `[scaffold]` — the daemon itself is built
+  (`Orkis.Daemon`, July 2026): a long-lived composition root owning the stateful side —
+  run registry with checkpoint adoption on restart (`RunRegistry` over
+  `ICheckpointStore.ListLatestAsync`), background execution, the durable approval inbox,
+  and sandboxes — exposed as HTTP/JSON over an owner-only Unix domain socket, with the
+  typed run-event stream served as SSE (live fan-out via `RunEventBroker` teeing the
+  durable log). The daemon is one composition root among several, never required: the
+  libraries stay embeddable in-process. What remains: thin clients (a CLI verb set
+  pointing at the socket, the compose-stack web UI, editor integrations), an
+  `Orkis.Client` package sharing the wire records, MCP servers in the daemon
+  composition, and bearer-token auth over TCP for remote clients.
+
+  **Protocol decision (July 2026): HTTP/JSON over a Unix domain socket, SSE for the
+  event stream** — Kestrel + minimal APIs, not gRPC or SignalR. Rationale: `RunEvent`'s
+  JSON-polymorphic form *is* the wire format (no parallel protobuf schema to maintain);
+  SSE `Last-Event-ID` maps directly onto `RunEvent.Sequence` +
+  `IRunEventLog.ReadAsync(afterSequence)` for gapless reconnect (replay history, then
+  live tail); the command surface is plain request/response; browsers consume SSE
+  natively (compose-stack web UI) and the future MCP server's Streamable HTTP transport
+  can co-host on the same endpoint. .NET clients get typed contracts by sharing the
+  abstractions records through a thin client package, not codegen. Auth is staged:
+  Unix-socket file permissions now, bearer token over TCP when the compose stack needs
+  remote clients. Forward-compat note: `System.Text.Json` polymorphic deserialization
+  throws on unknown `$type` discriminators, so clients must skip-and-continue on
+  unknown event types from day one.
 
 ## Tier 3 — Exploratory (needs more design; security- or complexity-heavy)
 

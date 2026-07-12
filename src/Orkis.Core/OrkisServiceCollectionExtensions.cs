@@ -27,6 +27,7 @@ public static class OrkisServiceCollectionExtensions
         services.TryAddSingleton<ISupervisorResolver, KeyedServiceSupervisorResolver>();
         services.TryAddSingleton<ICostCalculator>(NullCostCalculator.Instance);
         services.TryAddSingleton<AgentRunner>();
+        services.TryAddSingleton<RunRegistry>();
         return services;
     }
 
