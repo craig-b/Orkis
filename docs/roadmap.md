@@ -123,10 +123,20 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   processes, port forwarding, attach/detach). Much softened now that disk state
   survives VM death — the disappearance problem is memory-only.
 - **Firecracker networking — Phase 2: domain allowlist** `[idea]` — an SNI-filtering egress
-  proxy (no TLS interception) plus DNS control, for per-run domain scoping.
+  proxy (no TLS interception) plus DNS control, for per-run domain scoping. The DNS half
+  has a concrete first step: guests currently hardcode public resolvers, which fails on
+  hosts that restrict outbound DNS. A forwarder bound to the bridge IP
+  (`172.30.0.1:53`, provisioned by the network setup script), guest `resolv.conf`
+  pointing at it, and one targeted nft exception (guest → host UDP 53 only) ahead of
+  the host-block rule lets guest DNS ride the host's own resolution — and the
+  forwarder is the natural hook for the eventual allowlist.
 - **Sandbox capability advertising** `[idea]` — a `SandboxCapabilities` surface (network
   flag, available commands, notes) shown proactively in the tool description and folded
-  into error results, so the model stops thrashing through unavailable commands.
+  into error results, so the model stops thrashing through unavailable commands. Should
+  also carry a guest-image version check: deployed rootfs images silently drift behind
+  the repo's guest code (`init.sh`/agent), which surfaces as baffling runtime failures —
+  missing network config, dirty unmounts — long after the fact. Stamp a version into the
+  rootfs at build time, compare at sandbox startup, and warn loudly on mismatch.
 - **MCP server** `[idea]` — expose Orkis capabilities to other agents over MCP.
 - **Evals** `[idea]` — recorded/replayable model interactions for deterministic tests,
   behavioural regression suites, and LLM-as-judge scoring.

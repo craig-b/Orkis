@@ -42,6 +42,10 @@ remove() {
     iptables -D FORWARD -i "$BRIDGE" -j ACCEPT 2> /dev/null || true
     iptables -D FORWARD -o "$BRIDGE" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2> /dev/null || true
   fi
+  if command -v firewall-cmd > /dev/null && firewall-cmd --state > /dev/null 2>&1; then
+    firewall-cmd --zone=trusted --remove-interface="$BRIDGE" > /dev/null 2>&1 || true
+    firewall-cmd --permanent --zone=trusted --remove-interface="$BRIDGE" > /dev/null 2>&1 || true
+  fi
   i=0
   while [ "$i" -lt "$TAP_COUNT" ]; do
     ip link delete "$TAP_PREFIX$i" 2> /dev/null || true
@@ -118,6 +122,16 @@ if command -v iptables > /dev/null; then
     || iptables -I FORWARD -i "$BRIDGE" -j ACCEPT
   iptables -C FORWARD -o "$BRIDGE" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2> /dev/null \
     || iptables -I FORWARD -o "$BRIDGE" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+fi
+
+# firewalld evaluates its own forward chains for every table, and an unzoned
+# bridge falls into the default zone, which drops forwarded traffic. Trusting the
+# bridge hands filtering back to the orkis table above (host/LAN/metadata blocks
+# still apply) instead of double-filtering.
+if command -v firewall-cmd > /dev/null && firewall-cmd --state > /dev/null 2>&1; then
+  echo "firewalld: placing $BRIDGE in the trusted zone..."
+  firewall-cmd --zone=trusted --change-interface="$BRIDGE" > /dev/null
+  firewall-cmd --permanent --zone=trusted --change-interface="$BRIDGE" > /dev/null
 fi
 
 echo "Done. The Orkis Firecracker sandbox can now use NetworkMode.RestrictedEgress"

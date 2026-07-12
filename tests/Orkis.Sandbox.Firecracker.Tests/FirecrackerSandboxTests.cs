@@ -152,6 +152,113 @@ public sealed class FirecrackerSandboxTests
     }
 
     [Fact]
+    public async Task CorruptWorkspaceImageIsEvictedNotFatal()
+    {
+        if (!Available)
+        {
+            return;
+        }
+
+        var workingRoot = Path.Combine(Path.GetTempPath(), $"orkis-fc-corrupt-{Guid.NewGuid():n}");
+        try
+        {
+            await using var sandbox = new FirecrackerSandbox(
+                Options.Create(
+                    new FirecrackerSandboxOptions
+                    {
+                        KernelImagePath = KernelPath,
+                        RootfsImagePath = RootfsPath,
+                        WorkingRoot = workingRoot,
+                    }
+                )
+            );
+
+            using (var content = new MemoryStream("doomed"u8.ToArray()))
+            {
+                await sandbox.WriteWorkspaceFileAsync("chat-1", "keep.txt", content);
+            }
+
+            // Damage the image beyond what any fsck can fix: overwrite it with noise.
+            var imagePath = Assert.Single(Directory.GetFiles(Path.Combine(workingRoot, "workspaces")));
+            var noise = new byte[1024 * 1024];
+            Random.Shared.NextBytes(noise);
+            await File.WriteAllBytesAsync(imagePath, noise);
+
+            // Reading treats the unrepairable image as evicted: the file no longer
+            // exists, and the image is deleted rather than left as a dead end.
+            Assert.Null(await sandbox.ReadWorkspaceFileAsync("chat-1", "keep.txt"));
+            Assert.False(File.Exists(imagePath));
+
+            // The workspace stays usable: staging recreates it empty.
+            using (var content = new MemoryStream("fresh"u8.ToArray()))
+            {
+                await sandbox.WriteWorkspaceFileAsync("chat-1", "fresh.txt", content);
+            }
+
+            var stream = await sandbox.ReadWorkspaceFileAsync("chat-1", "fresh.txt");
+            Assert.NotNull(stream);
+            await stream.DisposeAsync();
+        }
+        finally
+        {
+            if (Directory.Exists(workingRoot))
+            {
+                Directory.Delete(workingRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ExecutingOnACorruptImageResetsTheWorkspaceAndSaysSo()
+    {
+        if (!Available)
+        {
+            return;
+        }
+
+        var workingRoot = Path.Combine(Path.GetTempPath(), $"orkis-fc-reset-{Guid.NewGuid():n}");
+        try
+        {
+            await using var sandbox = new FirecrackerSandbox(
+                Options.Create(
+                    new FirecrackerSandboxOptions
+                    {
+                        KernelImagePath = KernelPath,
+                        RootfsImagePath = RootfsPath,
+                        WorkingRoot = workingRoot,
+                    }
+                )
+            );
+
+            using (var content = new MemoryStream("doomed"u8.ToArray()))
+            {
+                await sandbox.WriteWorkspaceFileAsync("chat-1", "keep.txt", content);
+            }
+
+            var imagePath = Assert.Single(Directory.GetFiles(Path.Combine(workingRoot, "workspaces")));
+            var noise = new byte[1024 * 1024];
+            Random.Shared.NextBytes(noise);
+            await File.WriteAllBytesAsync(imagePath, noise);
+
+            // Execution recreates the workspace empty and tells the model in the
+            // result itself, instead of failing with "run fsck manually".
+            var result = await sandbox.ExecuteAsync(Shell("ls; echo alive") with { WorkspaceKey = "chat-1" });
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("alive", result.StandardOutput);
+            Assert.DoesNotContain("keep.txt", result.StandardOutput);
+            Assert.Contains("recreated", result.StandardError);
+        }
+        finally
+        {
+            if (Directory.Exists(workingRoot))
+            {
+                Directory.Delete(workingRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task RunsCommandInMicroVmAndCapturesOutput()
     {
         if (!Available)

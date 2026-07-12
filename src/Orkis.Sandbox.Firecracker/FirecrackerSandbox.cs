@@ -126,12 +126,13 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
         var gate = WorkspaceGates.GetOrAdd(workspaceImage, static _ => new SemaphoreSlim(1, 1));
 
         FirecrackerWarmVm? warmVm = null;
+        var workspaceReset = false;
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_options.EnableWarmVms && !_agentUnavailable)
             {
-                warmVm = await GetOrBootWarmVmAsync(
+                (warmVm, workspaceReset) = await GetOrBootWarmVmAsync(
                         workspaceImage,
                         stagingDirectory,
                         EffectiveNetwork(request),
@@ -143,7 +144,7 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
 
             if (warmVm is null)
             {
-                return await ExecuteColdLockedAsync(
+                var coldResult = await ExecuteColdLockedAsync(
                         request,
                         workspaceImage,
                         executionDirectory,
@@ -151,6 +152,7 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
                         cancellationToken
                     )
                     .ConfigureAwait(false);
+                return workspaceReset ? WithWorkspaceResetNotice(coldResult) : coldResult;
             }
         }
         finally
@@ -160,7 +162,8 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
 
         try
         {
-            return await ExecuteViaAgentAsync(warmVm, request, cancellationToken).ConfigureAwait(false);
+            var result = await ExecuteViaAgentAsync(warmVm, request, cancellationToken).ConfigureAwait(false);
+            return workspaceReset ? WithWorkspaceResetNotice(result) : result;
         }
         catch (SocketException)
         {
@@ -171,7 +174,7 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                return await ExecuteColdLockedAsync(
+                var fallbackResult = await ExecuteColdLockedAsync(
                         request,
                         workspaceImage,
                         executionDirectory,
@@ -179,6 +182,7 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
                         cancellationToken
                     )
                     .ConfigureAwait(false);
+                return workspaceReset ? WithWorkspaceResetNotice(fallbackResult) : fallbackResult;
             }
             finally
             {
@@ -193,7 +197,7 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
             // The VM broke mid-command. Whether the command's side effects happened is
             // unknowable, so do not silently re-execute — surface the loss instead.
             await RemoveWarmVmAsync(workspaceImage, warmVm).ConfigureAwait(false);
-            return new SandboxExecutionResult
+            var brokenResult = new SandboxExecutionResult
             {
                 ExitCode = -1,
                 StandardOutput = "",
@@ -202,6 +206,7 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
                     + "files are preserved; retry if the command is safe to run again.",
                 TimedOut = ex is OperationCanceledException,
             };
+            return workspaceReset ? WithWorkspaceResetNotice(brokenResult) : brokenResult;
         }
         finally
         {
@@ -218,9 +223,11 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
     )
     {
         WriteCommandScript(request, stagingDirectory);
-        if (File.Exists(workspaceImage))
+        var existed = File.Exists(workspaceImage);
+        var usable =
+            existed && await TryRepairWorkspaceImageAsync(workspaceImage, cancellationToken).ConfigureAwait(false);
+        if (usable)
         {
-            await ReplayJournalAsync(workspaceImage, cancellationToken).ConfigureAwait(false);
             var scriptPath = Path.Combine(stagingDirectory, ".orkis", "command.sh");
             await InjectCommandScriptAsync(workspaceImage, scriptPath, cancellationToken).ConfigureAwait(false);
         }
@@ -229,16 +236,18 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
             await BuildScratchImageAsync(stagingDirectory, workspaceImage, cancellationToken).ConfigureAwait(false);
         }
 
-        return await BootAndRunAsync(request, executionDirectory, workspaceImage, cancellationToken)
+        var result = await BootAndRunAsync(request, executionDirectory, workspaceImage, cancellationToken)
             .ConfigureAwait(false);
+        return existed && !usable ? WithWorkspaceResetNotice(result) : result;
     }
 
     /// <summary>
-    /// Returns the workspace's warm VM, booting one if needed. Must be called holding
-    /// the workspace gate. Returns <see langword="null"/> (and stops trying for this
-    /// sandbox) when the rootfs has no guest agent.
+    /// Returns the workspace's warm VM, booting one if needed, and whether the
+    /// workspace image had to be recreated because it was corrupted beyond repair.
+    /// Must be called holding the workspace gate. The VM is <see langword="null"/>
+    /// (and this sandbox stops trying) when the rootfs has no guest agent.
     /// </summary>
-    private async Task<FirecrackerWarmVm?> GetOrBootWarmVmAsync(
+    private async Task<(FirecrackerWarmVm? Vm, bool WorkspaceReset)> GetOrBootWarmVmAsync(
         string workspaceImage,
         string stagingDirectory,
         NetworkMode network,
@@ -249,7 +258,7 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
         {
             if (existing.Network == network)
             {
-                return existing;
+                return (existing, false);
             }
 
             // A VM cannot gain or lose its NIC while running: a changed network grant
@@ -258,10 +267,11 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
             await RemoveWarmVmAsync(workspaceImage, existing).ConfigureAwait(false);
         }
 
-        if (File.Exists(workspaceImage))
+        var existed = File.Exists(workspaceImage);
+        var usable =
+            existed && await TryRepairWorkspaceImageAsync(workspaceImage, cancellationToken).ConfigureAwait(false);
+        if (usable)
         {
-            await ReplayJournalAsync(workspaceImage, cancellationToken).ConfigureAwait(false);
-
             // A stale command script from an earlier cold run must not re-execute if
             // this boot falls back to the legacy init flow (rootfs without an agent).
             await RunDebugfsAsync(workspaceImage, "rm /.orkis/command.sh", cancellationToken).ConfigureAwait(false);
@@ -303,11 +313,11 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
         if (vm is null)
         {
             _agentUnavailable = true;
-            return null;
+            return (null, existed && !usable);
         }
 
         _warmVms[workspaceImage] = vm;
-        return vm;
+        return (vm, existed && !usable);
     }
 
     private async Task<SandboxExecutionResult> ExecuteViaAgentAsync(
@@ -520,7 +530,12 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
                 await warmVm.DisposeAsync().ConfigureAwait(false);
             }
 
-            await ReplayJournalAsync(imagePath, cancellationToken).ConfigureAwait(false);
+            if (!await TryRepairWorkspaceImageAsync(imagePath, cancellationToken).ConfigureAwait(false))
+            {
+                // The image was corrupted beyond repair and is gone; so is the file.
+                return null;
+            }
+
             var tempPath = Path.Combine(Path.GetTempPath(), "orkis-dump-" + Guid.CreateVersion7().ToString("n"));
             try
             {
@@ -574,7 +589,12 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
                 await warmVm.DisposeAsync().ConfigureAwait(false);
             }
 
-            if (!File.Exists(imagePath))
+            // An image corrupted beyond repair is deleted by the failed repair, so it
+            // takes the same recreate-empty path as one that never existed.
+            var usable =
+                File.Exists(imagePath)
+                && await TryRepairWorkspaceImageAsync(imagePath, cancellationToken).ConfigureAwait(false);
+            if (!usable)
             {
                 var emptyStaging = Path.Combine(
                     Path.GetTempPath(),
@@ -589,10 +609,6 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
                 {
                     TryDeleteDirectory(emptyStaging);
                 }
-            }
-            else
-            {
-                await ReplayJournalAsync(imagePath, cancellationToken).ConfigureAwait(false);
             }
 
             var tempPath = Path.Combine(Path.GetTempPath(), "orkis-stage-" + Guid.CreateVersion7().ToString("n"));
@@ -623,6 +639,19 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
     private string GetWorkspaceImagePath(string workspaceKey) =>
         Path.GetFullPath(Path.Combine(_options.WorkingRoot, "workspaces", SafePathNames.For(workspaceKey) + ".ext4"));
 
+    /// <summary>
+    /// Prepends the workspace-reset notice to a result's stderr, so the model learns
+    /// its files are gone from the command result itself and can decide what to redo.
+    /// </summary>
+    private static SandboxExecutionResult WithWorkspaceResetNotice(SandboxExecutionResult result) =>
+        result with
+        {
+            StandardError =
+                "note: this workspace's disk image was corrupted beyond repair and has been recreated "
+                + "empty — files from earlier commands in this workspace are gone."
+                + (result.StandardError.Length > 0 ? "\n" + result.StandardError : ""),
+        };
+
     private static string ValidateWorkspaceRelativePath(string relativePath)
     {
         ArgumentException.ThrowIfNullOrEmpty(relativePath);
@@ -636,29 +665,42 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
     }
 
     /// <summary>
-    /// Replays the image's ext4 journal (e2fsck preen) so debugfs sees current
-    /// metadata. A guest that halts without a clean unmount leaves the journal dirty,
-    /// and debugfs neither replays nor updates a journal — skipping this would lose
-    /// debugfs's changes to the kernel's own replay at the next mount.
+    /// Makes the workspace image safe to use: replays the ext4 journal (e2fsck
+    /// preen) so debugfs sees current metadata, escalating to a forceful repair for
+    /// structural damage preen refuses to touch (a VM killed mid-write). An image
+    /// even that cannot fix is deleted and this returns <see langword="false"/> —
+    /// eviction as a typed outcome: callers recreate the workspace empty and report
+    /// the reset, instead of surfacing a "run fsck manually" dead end the model
+    /// cannot act on.
     /// </summary>
-    private async Task ReplayJournalAsync(string imagePath, CancellationToken cancellationToken)
+    private async Task<bool> TryRepairWorkspaceImageAsync(string imagePath, CancellationToken cancellationToken)
+    {
+        // 0 = clean, 1 = errors corrected, 2 = corrected with reboot advised (moot
+        // for an unmounted image); anything higher means this mode gave up.
+        if (await RunE2fsckAsync("-fp", imagePath, cancellationToken).ConfigureAwait(false) <= 2)
+        {
+            return true;
+        }
+
+        if (await RunE2fsckAsync("-fy", imagePath, cancellationToken).ConfigureAwait(false) <= 2)
+        {
+            return true;
+        }
+
+        File.Delete(imagePath);
+        return false;
+    }
+
+    private async Task<int> RunE2fsckAsync(string mode, string imagePath, CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo { FileName = _options.E2fsckPath };
-        startInfo.ArgumentList.Add("-fp");
+        startInfo.ArgumentList.Add(mode);
         startInfo.ArgumentList.Add(imagePath);
 
         var outcome = await FirecrackerProcess
             .RunAsync(startInfo, TimeSpan.FromSeconds(60), 8192, _timeProvider, cancellationToken)
             .ConfigureAwait(false);
-
-        // 0 = clean, 1 = errors corrected, 2 = corrected with reboot advised (moot for
-        // an unmounted image); anything higher means the image is genuinely damaged.
-        if (outcome.ExitCode > 2)
-        {
-            throw new InvalidOperationException(
-                $"Repairing workspace image '{imagePath}' failed (e2fsck exit {outcome.ExitCode}): {outcome.StandardError}"
-            );
-        }
+        return outcome.ExitCode;
     }
 
     private async Task<FirecrackerProcess.Outcome> RunDebugfsAsync(

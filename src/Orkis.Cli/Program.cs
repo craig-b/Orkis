@@ -404,7 +404,13 @@ static async Task<bool> PromptDecisionsAsync(OrkisClient client, string runId, C
         var choice = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
                 .Title("decision:")
-                .AddChoices("approve (host)", "approve (sandboxed)", "deny", "leave pending")
+                .AddChoices(
+                    "approve (host)",
+                    "approve (sandboxed)",
+                    "approve (sandboxed + network egress)",
+                    "deny",
+                    "leave pending"
+                )
         );
         switch (choice)
         {
@@ -421,6 +427,19 @@ static async Task<bool> PromptDecisionsAsync(OrkisClient client, string runId, C
                     approval.RunId,
                     approval.CallId,
                     new DecideApprovalRequest { Verdict = "approve", SandboxLevel = "standard" },
+                    cancellationToken
+                );
+                break;
+            case "approve (sandboxed + network egress)":
+                await client.DecideApprovalAsync(
+                    approval.RunId,
+                    approval.CallId,
+                    new DecideApprovalRequest
+                    {
+                        Verdict = "approve",
+                        SandboxLevel = "standard",
+                        Network = "restrictedEgress",
+                    },
                     cancellationToken
                 );
                 break;

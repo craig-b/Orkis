@@ -20,6 +20,8 @@ public sealed class FirecrackerSandboxOptions
     /// unmount leaves the workspace image's journal dirty; e2fsck replays it before
     /// any debugfs access, since debugfs reads (and writes) stale metadata otherwise
     /// and the kernel's own replay at next mount would clobber debugfs's changes.
+    /// Structural damage escalates from preen to a forceful repair; an image even
+    /// that cannot fix is recreated empty (eviction as a typed outcome).
     /// </summary>
     public string E2fsckPath { get; set; } = "e2fsck";
 

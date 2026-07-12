@@ -44,7 +44,13 @@ internal static class DaemonEndpoints
                 var request = new AgentRunRequest
                 {
                     Prompt = body.Prompt,
-                    SystemPrompt = body.SystemPrompt,
+                    // Parity with the CLI host: a run without its own system prompt
+                    // still gets the guardrail against invented tool results.
+                    SystemPrompt =
+                        body.SystemPrompt
+                        ?? "You are an Orkis agent. Use the available tools to fulfil the request, "
+                            + "then summarize what happened.\n\n"
+                            + SystemPromptFragments.ConfabulationGuardrail,
                     SupervisorKey = supervisorKey,
                     Budget = new RunBudget { MaxTokens = body.MaxTokens, MaxToolCalls = body.MaxToolCalls },
                 };
