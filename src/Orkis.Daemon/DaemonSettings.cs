@@ -65,6 +65,13 @@ public sealed record DaemonSettings
     /// </summary>
     public IReadOnlyList<string> McpServers { get; init; } = [];
 
+    /// <summary>
+    /// Server specs that runtime connection is limited to (boot servers always allowed).
+    /// <see langword="null"/> imposes no restriction; an empty list permits only the boot
+    /// servers. See <see cref="OrkisConfig.McpAllowlist"/>.
+    /// </summary>
+    public IReadOnlyList<string>? McpAllowlist { get; init; }
+
     /// <summary>Isolation sandbox: <c>process</c>, <c>bubblewrap</c>, or <c>firecracker</c>.</summary>
     public string Sandbox { get; init; } = "process";
 

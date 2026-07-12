@@ -143,10 +143,13 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   disconnects on a live daemon and its tools join or leave the catalogue (active tools
   are name-referenced and re-resolved per segment, so detachment degrades to a typed
   "tool no longer exists"). Boot servers seed the registry; the CLI (`orkis mcp
-  list/add/rm`) and web UI drive it. Caveat recorded now: attaching a stdio MCP server
-  is arbitrary command execution on the host, so runtime mutation is a privileged
-  operation — it currently rides the same loopback/token trust as every other endpoint;
-  a dedicated audit trail and per-operation authz is still owed. Config changes are events.
+  list/add/rm`) and web UI drive it. Because attaching a stdio server is arbitrary command
+  execution, an `mcpAllowlist` (config) constrains runtime connection: omit for open, `[]`
+  for boot-servers-only, or a list of blessed specs; a blocked spec is refused with `403`
+  before any process spawns, and boot connections are not checked. Still owed: the
+  allowlist is a policy floor, not identity — a dedicated audit trail (who/when/what, via
+  `SO_PEERCRED` on the socket) and per-operation authz at the gateway (privileged routes
+  should not ride the loopback auth exemption). Config changes are events.
   Mutated objects that should survive restart live in daemon *state* (adopted on boot,
   like runs), never in the config file. (3) *Boot-only config* (sandbox plumbing,
   socket, data roots, auth): restart is the honest lifecycle; a daemon config file

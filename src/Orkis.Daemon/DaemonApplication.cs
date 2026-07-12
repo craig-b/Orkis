@@ -188,7 +188,7 @@ public static class DaemonApplication
         var toolCatalog = new MutableToolCatalog();
         services.AddSingleton(toolCatalog);
         services.AddSingleton<IToolCatalog>(toolCatalog);
-        services.AddSingleton(_ => new McpServerRegistry(toolCatalog, bootMcpServers));
+        services.AddSingleton(_ => new McpServerRegistry(toolCatalog, bootMcpServers, settings.McpAllowlist));
 
         services.AddSingleton(
             new DaemonInfo

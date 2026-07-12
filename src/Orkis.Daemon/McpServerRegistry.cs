@@ -17,19 +17,45 @@ public sealed class McpServerRegistry : IAsyncDisposable
     private readonly MutableToolCatalog _catalog;
     private readonly ConcurrentDictionary<string, Entry> _servers = new(StringComparer.Ordinal);
 
+    // Specs that AddAsync may connect, or null for no restriction. Seeded with the boot
+    // servers (always allowed) plus the configured allowlist.
+    private readonly HashSet<string>? _allowed;
+
     // Connects run outside this lock; it guards only the name-uniquify-then-insert step
     // so two concurrent adds cannot settle on the same registered name.
     private readonly Lock _register = new();
 
     private sealed record Entry(string Spec, McpToolSet ToolSet);
 
-    /// <summary>Seeds the registry (and the catalogue) with the boot-time servers.</summary>
-    public McpServerRegistry(MutableToolCatalog catalog, IEnumerable<(string Spec, McpToolSet ToolSet)> initial)
+    /// <summary>
+    /// Seeds the registry (and the catalogue) with the boot-time servers.
+    /// <paramref name="allowlist"/> constrains runtime <see cref="AddAsync"/>: null for no
+    /// restriction, otherwise only those specs (plus the boot servers) may be connected.
+    /// </summary>
+    public McpServerRegistry(
+        MutableToolCatalog catalog,
+        IEnumerable<(string Spec, McpToolSet ToolSet)> initial,
+        IReadOnlyList<string>? allowlist = null
+    )
     {
         _catalog = catalog;
         foreach (var (spec, toolSet) in initial)
         {
             Register(spec, toolSet);
+        }
+
+        if (allowlist is not null)
+        {
+            _allowed = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var (spec, _) in initial)
+            {
+                _allowed.Add(spec.Trim());
+            }
+
+            foreach (var spec in allowlist)
+            {
+                _allowed.Add(spec.Trim());
+            }
         }
     }
 
@@ -41,6 +67,13 @@ public sealed class McpServerRegistry : IAsyncDisposable
     )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(spec);
+
+        // Check the allowlist before connecting so a rejected spec never spawns a process.
+        if (_allowed is not null && !_allowed.Contains(spec.Trim()))
+        {
+            throw new McpServerNotAllowedException(spec);
+        }
+
         var toolSet = await McpToolSet.ConnectAsync(spec, cancellationToken).ConfigureAwait(false);
         try
         {
@@ -121,3 +154,11 @@ public sealed class McpServerRegistry : IAsyncDisposable
         _servers.Clear();
     }
 }
+
+/// <summary>
+/// Raised when a runtime connection is refused because the spec is not on the configured
+/// allowlist. The endpoint surfaces it as <c>403 Forbidden</c>, distinct from a spec that
+/// was allowed but failed to connect.
+/// </summary>
+public sealed class McpServerNotAllowedException(string spec)
+    : Exception($"MCP server '{spec}' is not on the allowlist.");

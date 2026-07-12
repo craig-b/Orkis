@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Orkis.Core.Tools;
 using Orkis.Tools;
 
 namespace Orkis.Daemon.Tests;
@@ -121,6 +122,51 @@ public sealed class McpDaemonTests
         finally
         {
             Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task AllowlistRejectsUnlistedSpecsBeforeConnecting()
+    {
+        // No python3 needed: rejection happens before any process is spawned.
+        var catalog = new MutableToolCatalog();
+
+        // Empty allowlist: nothing may be connected at runtime.
+        var locked = new McpServerRegistry(catalog, [], allowlist: []);
+        await Assert.ThrowsAsync<McpServerNotAllowedException>(() => locked.AddAsync("python3 anything.py"));
+        Assert.Empty(locked.List());
+        Assert.Equal(0, catalog.Count);
+
+        // A specific allowlist still rejects a spec that is not on it.
+        var restricted = new McpServerRegistry(catalog, [], allowlist: ["python3 blessed.py"]);
+        await Assert.ThrowsAsync<McpServerNotAllowedException>(() => restricted.AddAsync("python3 evil.py"));
+
+        // A null allowlist imposes no restriction (the connect then fails for other reasons).
+        var open = new McpServerRegistry(catalog, [], allowlist: null);
+        await Assert.ThrowsAnyAsync<Exception>(() => open.AddAsync("definitely-not-a-real-command-xyz"));
+    }
+
+    [Fact]
+    public async Task AllowlistPermitsListedServersAndBlocksOthers()
+    {
+        if (!Available)
+        {
+            return;
+        }
+
+        var serverScript = Path.Combine(AppContext.BaseDirectory, "fixtures", "test-mcp-server.py");
+        var blessed = $"python3 {serverScript}";
+        var registry = new McpServerRegistry(new MutableToolCatalog(), [], allowlist: [blessed]);
+        try
+        {
+            var added = await registry.AddAsync(blessed);
+            Assert.NotEmpty(added.Tools);
+
+            await Assert.ThrowsAsync<McpServerNotAllowedException>(() => registry.AddAsync("python3 /some/other.py"));
+        }
+        finally
+        {
+            await registry.DisposeAsync();
         }
     }
 }

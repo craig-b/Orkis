@@ -189,10 +189,13 @@ environment variables. `orkis run --model <key>` selects one; the key is
 checkpointed, so a resumed run reconnects to the same model.
 
 The same file carries the daemon's other boot settings — `dataDir` (state root),
-`socket`, `sandbox`, `workspace`, `mcpServer`, and `corpus` (a directory indexed for
+`socket`, `sandbox`, `workspace`, `mcpServers`, and `corpus` (a directory indexed for
 `search_corpus`). Each is optional with a sensible default, and its `ORKIS_*` env var
 still overrides the file (env → file → default), so a deployment is one file instead
-of a systemd unit full of variables.
+of a systemd unit full of variables. Because connecting a stdio MCP server at runtime
+is arbitrary command execution, `mcpAllowlist` constrains it: omit for no restriction,
+`[]` to permit only the boot servers, or a list of blessed specs (a blocked spec is
+refused with `403` before any process spawns).
 
 The `orkis` CLI is the thin client (`--socket` or `ORKIS_SOCKET` selects a daemon;
 the well-known path is the default). `orkis run` attaches to the run's event

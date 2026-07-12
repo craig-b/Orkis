@@ -110,6 +110,7 @@ var settings = new DaemonSettings
     McpServers = Environment.GetEnvironmentVariable("ORKIS_MCP_SERVER") is { Length: > 0 } mcpEnv
         ? mcpEnv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         : config?.AllMcpServers ?? [],
+    McpAllowlist = config?.McpAllowlist,
 };
 
 var app = await DaemonApplication.CreateAsync(settings);

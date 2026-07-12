@@ -41,6 +41,15 @@
   //   "npx -y @some/mcp-server",              //   stdio: a command line
   //   "https://mcp.example.com/mcp",          //   or an http(s) Streamable HTTP endpoint
   // ],
+
+  // Connecting a stdio MCP server at runtime (POST /v1/mcp-servers, `orkis mcp add`) is
+  // arbitrary command execution, so an allowlist constrains it. Omit for no restriction;
+  // [] permits only the boot servers above; a list permits exactly those specs (the boot
+  // servers are always allowed). Boot connections themselves are never checked.
+  // "mcpAllowlist": [
+  //   "npx -y @some/other-server",
+  // ],
+
   // "corpus": "/srv/knowledge-base",          // directory indexed for the search_corpus tool
 
   // The Orkis.Web gateway (the daemon's network face) reads this same file — it uses

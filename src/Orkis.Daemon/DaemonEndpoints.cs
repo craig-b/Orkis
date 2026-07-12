@@ -467,6 +467,11 @@ internal static class DaemonEndpoints
                     var added = await registry.AddAsync(body.Server, body.Name, cancellationToken);
                     return Results.Created($"/v1/mcp-servers/{Uri.EscapeDataString(added.Name)}", added);
                 }
+                catch (McpServerNotAllowedException ex)
+                {
+                    // Refused by policy, not a connection failure — distinct status.
+                    return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
+                }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     // A bad spec or an unreachable server is the caller's problem, not a 500.

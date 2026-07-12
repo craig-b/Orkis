@@ -39,6 +39,14 @@ public sealed class OrkisConfig
     /// <summary>MCP servers to consume; combined with <see cref="McpServer"/> if both are given.</summary>
     public IReadOnlyList<string>? McpServers { get; init; }
 
+    /// <summary>
+    /// Server specs that runtime <c>POST /v1/mcp-servers</c> may connect. Connecting a
+    /// stdio server is arbitrary command execution, so this constrains it: omit for no
+    /// restriction, <c>[]</c> to allow only the boot servers, or a list of blessed specs
+    /// (the boot servers are always allowed). Boot connections are not checked.
+    /// </summary>
+    public IReadOnlyList<string>? McpAllowlist { get; init; }
+
     /// <summary>Directory of documents to index for search_corpus.</summary>
     public string? Corpus { get; init; }
 
