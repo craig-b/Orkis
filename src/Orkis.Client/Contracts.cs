@@ -173,6 +173,29 @@ public sealed record ContinueRunRequest
     public required string Message { get; init; }
 }
 
+/// <summary>Body of <c>POST /v1/mcp-servers</c> — connect an MCP server to the live daemon.</summary>
+public sealed record AddMcpServerRequest
+{
+    /// <summary>An <c>http(s)://</c> Streamable HTTP endpoint or a stdio command line.</summary>
+    public required string Server { get; init; }
+
+    /// <summary>Optional name to register it under; defaults to the server's own name, made unique.</summary>
+    public string? Name { get; init; }
+}
+
+/// <summary>A connected MCP server as reported by <c>GET /v1/mcp-servers</c>.</summary>
+public sealed record McpServerResponse
+{
+    /// <summary>The name it is registered under (unique; used to remove it).</summary>
+    public required string Name { get; init; }
+
+    /// <summary>The configuration string it was connected from.</summary>
+    public required string Server { get; init; }
+
+    /// <summary>Names of the tools it contributes to the catalogue.</summary>
+    public required IReadOnlyList<string> Tools { get; init; }
+}
+
 /// <summary>Body of <c>POST /v1/approvals/{runId}/{callId}</c>.</summary>
 public sealed record DecideApprovalRequest
 {

@@ -47,6 +47,57 @@ public sealed class InMemoryToolCatalogTests
     }
 }
 
+public sealed class MutableToolCatalogTests
+{
+    [Fact]
+    public async Task GroupsAddAndRemoveAffectingCountSearchAndResolve()
+    {
+        var catalog = new MutableToolCatalog();
+        Assert.Equal(0, catalog.Count);
+        Assert.Empty(await catalog.SearchAsync("dice"));
+
+        catalog.SetGroup("games", [new FakeTool("roll_dice"), new FakeTool("draw_card")]);
+        catalog.SetGroup("io", [new FakeTool("read_file")]);
+        Assert.Equal(3, catalog.Count);
+        Assert.Equal("roll_dice", Assert.Single(await catalog.SearchAsync("dice")).Name);
+        Assert.NotNull(await catalog.ResolveAsync("read_file"));
+
+        Assert.True(catalog.RemoveGroup("games"));
+        Assert.Equal(1, catalog.Count);
+        Assert.Empty(await catalog.SearchAsync("dice"));
+        Assert.Null(await catalog.ResolveAsync("roll_dice"));
+        Assert.NotNull(await catalog.ResolveAsync("read_file"));
+    }
+
+    [Fact]
+    public async Task SetGroupReplacesAnExistingGroupsTools()
+    {
+        var catalog = new MutableToolCatalog();
+        catalog.SetGroup("srv", [new FakeTool("old_tool")]);
+        catalog.SetGroup("srv", [new FakeTool("new_tool")]);
+
+        Assert.Equal(1, catalog.Count);
+        Assert.Null(await catalog.ResolveAsync("old_tool"));
+        Assert.NotNull(await catalog.ResolveAsync("new_tool"));
+    }
+
+    [Fact]
+    public void RemovingAnAbsentGroupReturnsFalse()
+    {
+        Assert.False(new MutableToolCatalog().RemoveGroup("nope"));
+    }
+
+    [Fact]
+    public void SeedsFromInitialGroups()
+    {
+        var catalog = new MutableToolCatalog([
+            new KeyValuePair<string, IReadOnlyList<ITool>>("srv", [new FakeTool("a"), new FakeTool("b")]),
+        ]);
+
+        Assert.Equal(2, catalog.Count);
+    }
+}
+
 public sealed class ToolScopingTests : IDisposable
 {
     private readonly FakeChatClient _chatClient = new();

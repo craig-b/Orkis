@@ -425,6 +425,93 @@ removeScheduleCommand.SetAction(
 schedulesCommand.Subcommands.Add(removeScheduleCommand);
 root.Subcommands.Add(schedulesCommand);
 
+// mcp ----------------------------------------------------------------------------
+var mcpCommand = new Command("mcp", "List, connect, or disconnect MCP servers on the running daemon.");
+mcpCommand.SetAction(
+    (parseResult, cancellationToken) =>
+        WithClient(
+            parseResult,
+            async client =>
+            {
+                var servers = await client.ListMcpServersAsync(cancellationToken);
+                if (servers.Count == 0)
+                {
+                    Console.WriteLine("no mcp servers");
+                    return 0;
+                }
+
+                var table = new Table().AddColumns("NAME", "SERVER", "TOOLS");
+                foreach (var server in servers)
+                {
+                    table.AddRow(
+                        server.Name.EscapeMarkup(),
+                        server.Server.EscapeMarkup(),
+                        string.Join(", ", server.Tools).EscapeMarkup()
+                    );
+                }
+
+                AnsiConsole.Write(table);
+                return 0;
+            }
+        )
+);
+
+var mcpServerArgument = new Argument<string>("server") { Description = "An http(s) endpoint or a stdio command line." };
+var mcpNameOption = new Option<string?>("--name")
+{
+    Description = "Name to register it under (defaults to the server's own name).",
+};
+var addMcpCommand = new Command("add", "Connect an MCP server; its tools join the catalogue.");
+addMcpCommand.Arguments.Add(mcpServerArgument);
+addMcpCommand.Options.Add(mcpNameOption);
+addMcpCommand.SetAction(
+    (parseResult, cancellationToken) =>
+        WithClient(
+            parseResult,
+            async client =>
+            {
+                var added = await client.AddMcpServerAsync(
+                    new AddMcpServerRequest
+                    {
+                        Server = parseResult.GetValue(mcpServerArgument)!,
+                        Name = parseResult.GetValue(mcpNameOption),
+                    },
+                    cancellationToken
+                );
+                AnsiConsole.MarkupLine(
+                    $"connected [bold]{added.Name.EscapeMarkup()}[/] ({added.Tools.Count} tool(s): "
+                        + $"{string.Join(", ", added.Tools).EscapeMarkup()})"
+                );
+                return 0;
+            }
+        )
+);
+mcpCommand.Subcommands.Add(addMcpCommand);
+
+var mcpNameArgument = new Argument<string>("name") { Description = "The server to disconnect." };
+var removeMcpCommand = new Command("rm", "Disconnect an MCP server.");
+removeMcpCommand.Arguments.Add(mcpNameArgument);
+removeMcpCommand.SetAction(
+    (parseResult, cancellationToken) =>
+        WithClient(
+            parseResult,
+            async client =>
+            {
+                var name = parseResult.GetValue(mcpNameArgument)!;
+                if (await client.RemoveMcpServerAsync(name, cancellationToken))
+                {
+                    Console.WriteLine($"disconnected {name}");
+                    return 0;
+                }
+
+                AnsiConsole.MarkupLine($"[red]error:[/] no mcp server '{name.EscapeMarkup()}'.");
+                return 1;
+            }
+        )
+);
+mcpCommand.Subcommands.Add(removeMcpCommand);
+root.Subcommands.Add(mcpCommand);
+
 // info ---------------------------------------------------------------------------
 var infoCommand = new Command("info", "Show what the daemon offers: supervisors, models, sandbox, tools.");
 infoCommand.SetAction(

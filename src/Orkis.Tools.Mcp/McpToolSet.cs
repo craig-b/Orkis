@@ -12,11 +12,15 @@ public sealed class McpToolSet : IAsyncDisposable
 {
     private readonly McpClient _client;
 
-    private McpToolSet(McpClient client, IReadOnlyList<ITool> tools)
+    private McpToolSet(McpClient client, string name, IReadOnlyList<ITool> tools)
     {
         _client = client;
+        Name = name;
         Tools = tools;
     }
+
+    /// <summary>The server's display name (endpoint host or command file name).</summary>
+    public string Name { get; }
 
     /// <summary>The server's tools, adapted to <see cref="ITool"/>.</summary>
     public IReadOnlyList<ITool> Tools { get; }
@@ -104,6 +108,7 @@ public sealed class McpToolSet : IAsyncDisposable
             var tools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
             return new McpToolSet(
                 client,
+                options.Name,
                 [.. tools.Select(tool => new McpToolAdapter(client, tool, options.TrustAnnotations))]
             );
         }

@@ -40,13 +40,77 @@ public sealed class McpDaemonTests
             await app.StartAsync();
             try
             {
-                var toolSet = app.Services.GetRequiredService<McpToolSet>();
-                Assert.NotEmpty(toolSet.Tools);
+                var registry = app.Services.GetRequiredService<McpServerRegistry>();
+                var servers = registry.List();
+                Assert.Single(servers);
+                Assert.NotEmpty(servers[0].Tools);
 
                 // The tools live in the searchable catalogue, not the always-on set.
                 var catalog = app.Services.GetRequiredService<IToolCatalog>();
-                var matches = await catalog.SearchAsync(toolSet.Tools[0].Descriptor.Name);
+                var matches = await catalog.SearchAsync(servers[0].Tools[0]);
                 Assert.NotEmpty(matches);
+            }
+            finally
+            {
+                await app.StopAsync();
+                await app.DisposeAsync();
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ServersAddedAndRemovedAtRuntimeUpdateTheCatalogue()
+    {
+        if (!Available)
+        {
+            return;
+        }
+
+        var root = Directory.CreateTempSubdirectory("orkis-daemon-mcp-runtime-").FullName;
+        var serverScript = Path.Combine(AppContext.BaseDirectory, "fixtures", "test-mcp-server.py");
+        try
+        {
+            // Boot with no MCP servers: the catalogue starts empty.
+            var app = await DaemonApplication.CreateAsync(
+                new DaemonSettings
+                {
+                    SocketPath = Path.Combine(root, "orkis.sock"),
+                    CheckpointDirectory = Path.Combine(root, "checkpoints"),
+                    EventDirectory = Path.Combine(root, "events"),
+                    ApprovalDirectory = Path.Combine(root, "approvals"),
+                    ArtifactDirectory = Path.Combine(root, "artifacts"),
+                    Offline = true,
+                    Sandbox = "process",
+                }
+            );
+            await app.StartAsync();
+            try
+            {
+                var registry = app.Services.GetRequiredService<McpServerRegistry>();
+                var catalog = app.Services.GetRequiredService<IToolCatalog>();
+                Assert.Empty(registry.List());
+                Assert.Equal(0, catalog.Count);
+
+                // Connect at runtime: its tools become searchable.
+                var added = await registry.AddAsync($"python3 {serverScript}");
+                Assert.NotEmpty(added.Tools);
+                Assert.Equal(catalog.Count, added.Tools.Count);
+                Assert.NotEmpty(await catalog.SearchAsync(added.Tools[0]));
+
+                // A second connection of the same server gets a distinct name.
+                var second = await registry.AddAsync($"python3 {serverScript}");
+                Assert.NotEqual(added.Name, second.Name);
+                Assert.Equal(2, registry.List().Count);
+
+                // Disconnect: the first server's tools leave the catalogue.
+                Assert.True(await registry.RemoveAsync(added.Name));
+                Assert.False(await registry.RemoveAsync(added.Name));
+                Assert.Single(registry.List());
+                Assert.Equal(second.Tools.Count, catalog.Count);
             }
             finally
             {

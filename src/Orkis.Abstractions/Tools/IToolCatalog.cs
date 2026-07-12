@@ -9,6 +9,12 @@ namespace Orkis.Tools;
 /// </summary>
 public interface IToolCatalog
 {
+    /// <summary>
+    /// How many tools the catalogue currently holds. Zero means there is nothing to
+    /// disclose, so callers can omit the search meta-tool entirely.
+    /// </summary>
+    int Count { get; }
+
     /// <summary>Returns descriptors of catalogue tools matching the query, best first.</summary>
     Task<IReadOnlyList<ToolDescriptor>> SearchAsync(
         string query,

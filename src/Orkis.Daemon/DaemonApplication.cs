@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenAI;
 using Orkis.Artifacts;
 using Orkis.Clients;
+using Orkis.Core.Tools;
 using Orkis.Memory;
 using Orkis.Retrieval;
 using Orkis.Runs;
@@ -37,13 +38,14 @@ public static class DaemonApplication
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        // Connect before building: a misconfigured server fails daemon startup
-        // loudly instead of leaving a silently tool-less catalogue. Each server is its
-        // own McpToolSet; their tools are unioned into the catalogue below.
-        var mcpToolSets = new List<McpToolSet>();
+        // Connect before building: a misconfigured server fails daemon startup loudly
+        // instead of leaving a silently tool-less catalogue. Each server is its own
+        // McpToolSet; the registry seeds the catalogue with them and can add or remove
+        // more at runtime. Specs are kept so a server can be reported and rebuilt.
+        var bootMcpServers = new List<(string Spec, McpToolSet ToolSet)>();
         foreach (var serverSpec in settings.McpServers)
         {
-            mcpToolSets.Add(await McpToolSet.ConnectAsync(serverSpec).ConfigureAwait(false));
+            bootMcpServers.Add((serverSpec, await McpToolSet.ConnectAsync(serverSpec).ConfigureAwait(false)));
         }
 
         PrepareSocket(settings.SocketPath);
@@ -180,17 +182,13 @@ public static class DaemonApplication
         // workspace and memory scope.
         services.AddSingleton(provider => new RunnerFactory(provider, settings));
 
-        if (mcpToolSets.Count > 0)
-        {
-            // Each instance registered as a captured singleton so provider disposal
-            // shuts its server down; the catalogue is the union of all their tools.
-            foreach (var toolSet in mcpToolSets)
-            {
-                services.AddSingleton(toolSet);
-            }
-
-            services.AddOrkisToolCatalog(_ => mcpToolSets.SelectMany(toolSet => toolSet.Tools));
-        }
+        // A single mutable catalogue, always present so servers can be added to a live
+        // daemon that booted with none. The registry seeds it with the boot servers and
+        // owns their lifetime (it is disposed with the container).
+        var toolCatalog = new MutableToolCatalog();
+        services.AddSingleton(toolCatalog);
+        services.AddSingleton<IToolCatalog>(toolCatalog);
+        services.AddSingleton(_ => new McpServerRegistry(toolCatalog, bootMcpServers));
 
         services.AddSingleton(
             new DaemonInfo
@@ -218,6 +216,10 @@ public static class DaemonApplication
 
         var app = builder.Build();
         app.Lifetime.ApplicationStarted.Register(() => TightenSocketPermissions(settings.SocketPath));
+
+        // Resolve the registry now so the boot servers seed the catalogue before any run
+        // resolves IToolCatalog (the tests replace configureServices but not this).
+        app.Services.GetRequiredService<McpServerRegistry>();
         app.MapOrkisDaemon();
         return app;
     }

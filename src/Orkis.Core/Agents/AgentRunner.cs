@@ -740,14 +740,17 @@ public sealed class AgentRunner
 
     private ChatOptions? BuildChatOptions(Dictionary<string, ITool> runTools)
     {
-        if (runTools.Count == 0 && _toolCatalog is null)
+        // An empty catalogue is as good as none: offer search_tools only when there is
+        // something to disclose, so a daemon with no MCP servers keeps its lean tool set.
+        var catalogueHasTools = _toolCatalog is { Count: > 0 };
+        if (runTools.Count == 0 && !catalogueHasTools)
         {
             return null;
         }
 
         var declarations = new List<AITool>(runTools.Count + 1);
         declarations.AddRange(runTools.Values.Select(AITool (t) => new ToolDeclaration(t.Descriptor)));
-        if (_toolCatalog is not null)
+        if (catalogueHasTools)
         {
             declarations.Add(new ToolDeclaration(SearchToolsDescriptor));
         }

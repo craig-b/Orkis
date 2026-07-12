@@ -19,6 +19,9 @@ public sealed class InMemoryToolCatalog : IToolCatalog
     }
 
     /// <inheritdoc />
+    public int Count => _tools.Count;
+
+    /// <inheritdoc />
     public Task<IReadOnlyList<ToolDescriptor>> SearchAsync(
         string query,
         int limit = 5,

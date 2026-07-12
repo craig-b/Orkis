@@ -450,6 +450,36 @@ internal static class DaemonEndpoints
                     : Results.Stream(content, "application/octet-stream", fileDownloadName: name);
             }
         );
+
+        app.MapGet("/v1/mcp-servers", static (McpServerRegistry registry) => Results.Ok(registry.List()));
+
+        app.MapPost(
+            "/v1/mcp-servers",
+            static async (AddMcpServerRequest body, McpServerRegistry registry, CancellationToken cancellationToken) =>
+            {
+                if (string.IsNullOrWhiteSpace(body.Server))
+                {
+                    return Results.BadRequest(new { error = "server is required." });
+                }
+
+                try
+                {
+                    var added = await registry.AddAsync(body.Server, body.Name, cancellationToken);
+                    return Results.Created($"/v1/mcp-servers/{Uri.EscapeDataString(added.Name)}", added);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // A bad spec or an unreachable server is the caller's problem, not a 500.
+                    return Results.BadRequest(new { error = $"Could not connect to MCP server: {ex.Message}" });
+                }
+            }
+        );
+
+        app.MapDelete(
+            "/v1/mcp-servers/{name}",
+            static async (string name, McpServerRegistry registry, CancellationToken cancellationToken) =>
+                await registry.RemoveAsync(name, cancellationToken) ? Results.NoContent() : Results.NotFound()
+        );
     }
 
     /// <summary>

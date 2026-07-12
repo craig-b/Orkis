@@ -147,13 +147,13 @@ Console.WriteLine(
         ? "memory: off (no embedding model configured)"
         : $"memory: on ({settings.Embedding.ModelId}){(settings.CorpusDirectory is null ? "" : " + corpus retrieval")}"
 );
-var mcpToolSets = app.Services.GetServices<Orkis.Tools.McpToolSet>().ToList();
-if (mcpToolSets.Count > 0)
+var mcpServers = app.Services.GetRequiredService<McpServerRegistry>().List();
+if (mcpServers.Count > 0)
 {
-    var mcpTools = mcpToolSets.SelectMany(s => s.Tools).ToList();
+    var mcpTools = mcpServers.SelectMany(s => s.Tools).ToList();
     Console.WriteLine(
-        $"mcp: {mcpToolSets.Count} server(s), {mcpTools.Count} tool(s) join the catalogue: "
-            + string.Join(", ", mcpTools.Select(t => t.Descriptor.Name))
+        $"mcp: {mcpServers.Count} server(s), {mcpTools.Count} tool(s) join the catalogue: "
+            + string.Join(", ", mcpTools)
     );
 }
 

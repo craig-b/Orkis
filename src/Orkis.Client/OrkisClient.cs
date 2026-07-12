@@ -316,6 +316,48 @@ public sealed class OrkisClient : IDisposable
         return true;
     }
 
+    /// <summary>Every MCP server currently connected to the daemon.</summary>
+    public async Task<IReadOnlyList<McpServerResponse>> ListMcpServersAsync(
+        CancellationToken cancellationToken = default
+    )
+    {
+        using var response = await _http
+            .GetAsync(new Uri("/v1/mcp-servers", UriKind.Relative), cancellationToken)
+            .ConfigureAwait(false);
+        return await ReadAsync<IReadOnlyList<McpServerResponse>>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Connects an MCP server to the live daemon; its tools join the catalogue.</summary>
+    public async Task<McpServerResponse> AddMcpServerAsync(
+        AddMcpServerRequest request,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var response = await _http
+            .PostAsJsonAsync(new Uri("/v1/mcp-servers", UriKind.Relative), request, JsonOptions, cancellationToken)
+            .ConfigureAwait(false);
+        return await ReadAsync<McpServerResponse>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Disconnects an MCP server. Returns <see langword="false"/> when it was not connected.</summary>
+    public async Task<bool> RemoveMcpServerAsync(string name, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(name);
+
+        using var response = await _http
+            .DeleteAsync(new Uri($"/v1/mcp-servers/{Uri.EscapeDataString(name)}", UriKind.Relative), cancellationToken)
+            .ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
     /// <summary>
     /// Streams the run's events: recorded history after <paramref name="afterSequence"/>
     /// first, then — when <paramref name="follow"/> — live events until the run
