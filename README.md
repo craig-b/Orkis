@@ -181,7 +181,12 @@ orkis approvals                          # pending decisions
 orkis approve <run> <call> --sandbox standard --resume
 orkis deny <run> <call> --reason "not like this" --resume
 orkis artifacts
+orkis dash                               # live TUI: runs, approvals, event feed
 ```
+
+`orkis dash` follows the daemon-wide event stream (`GET /v1/events`) — every run's
+events multiplexed live over one connection — on top of runs/approvals snapshots.
+Press `a` to decide pending approvals without leaving the dashboard, `q` to quit.
 
 Supervision is queue-based by default (`--supervisor` selects `yolo` or, on live
 runs, `ai`), so every risky action is a pending approval on the wire.

@@ -128,6 +128,8 @@ internal static class DaemonEndpoints
 
         app.MapGet("/v1/runs/{runId}/events", StreamEventsAsync);
 
+        app.MapGet("/v1/events", StreamAllEventsAsync);
+
         app.MapGet(
             "/v1/approvals",
             static async (string? runId, IApprovalInbox inbox, CancellationToken cancellationToken) =>
@@ -322,16 +324,46 @@ internal static class DaemonEndpoints
         }
     }
 
+    /// <summary>
+    /// Streams every run's live events as one SSE stream — the dashboard feed. No
+    /// history and no <c>id:</c> fields: sequences are per run, so global resume
+    /// semantics would be a lie. Clients bootstrap from the <c>/v1/runs</c> and
+    /// <c>/v1/approvals</c> snapshots and apply live events on top, re-snapshotting
+    /// after a reconnect.
+    /// </summary>
+    private static async Task StreamAllEventsAsync(HttpContext context, RunEventBroker broker)
+    {
+        var cancellationToken = context.RequestAborted;
+        context.Response.ContentType = "text/event-stream";
+        context.Response.Headers.CacheControl = "no-store";
+
+        using var subscription = broker.SubscribeAll();
+        await context.Response.Body.FlushAsync(cancellationToken);
+        try
+        {
+            await foreach (var runEvent in subscription.Reader.ReadAllAsync(cancellationToken))
+            {
+                await WriteEventAsync(context.Response, runEvent, cancellationToken, includeId: false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The client went away.
+        }
+    }
+
     private static async Task WriteEventAsync(
         HttpResponse response,
         RunEvent runEvent,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        bool includeId = true
     )
     {
         // One line per event: RunEvent's polymorphic JSON has no raw newlines, so a
         // single data: field carries it unaltered — the same bytes as the JSONL log.
         var json = JsonSerializer.Serialize(runEvent, WireJsonOptions);
-        await response.WriteAsync($"id: {runEvent.Sequence}\ndata: {json}\n\n", cancellationToken);
+        var frame = includeId ? $"id: {runEvent.Sequence}\ndata: {json}\n\n" : $"data: {json}\n\n";
+        await response.WriteAsync(frame, cancellationToken);
         await response.Body.FlushAsync(cancellationToken);
     }
 }

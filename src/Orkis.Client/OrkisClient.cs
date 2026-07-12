@@ -211,6 +211,32 @@ public sealed class OrkisClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Streams every run's live events as one feed — the dashboard stream. Live-only
+    /// with no replay: bootstrap state from <see cref="ListRunsAsync"/> and
+    /// <see cref="ListApprovalsAsync"/>, apply events on top, and re-snapshot after a
+    /// reconnect. Runs until cancelled or the daemon goes away.
+    /// </summary>
+    public async IAsyncEnumerable<RunEvent> StreamAllEventsAsync(
+        [EnumeratorCancellation] CancellationToken cancellationToken = default
+    )
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri("/v1/events", UriKind.Relative));
+        using var response = await _http
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            .ConfigureAwait(false);
+        await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        await using (stream.ConfigureAwait(false))
+        {
+            await foreach (var runEvent in SseRunEvents.ReadAsync(stream, cancellationToken).ConfigureAwait(false))
+            {
+                yield return runEvent;
+            }
+        }
+    }
+
     public void Dispose() => _http.Dispose();
 
     private static async Task<T> ReadAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)

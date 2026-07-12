@@ -79,12 +79,14 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   the daemon composition, and bearer-token auth over TCP for remote clients.
 
   **TUI decision (July 2026):** same binary as the CLI — an `orkis dash` verb —
-  not a separate tool; both share `Orkis.Client`. First cut renders with
-  Spectre.Console's live layout (runs + approvals + event tail), graduating to
-  Terminal.Gui only if interaction depth demands it — that would also be the moment
-  to split binaries. Prerequisite protocol growth: a daemon-wide `GET /v1/events`
-  stream (all runs multiplexed; `RunEventBroker` needs a wildcard subscription), so
-  a dashboard is one connection instead of N streams plus approval polling.
+  not a separate tool; both share `Orkis.Client`. The first cut is built:
+  Spectre.Console live layout (runs + approvals + rolling event feed) over the
+  daemon-wide `GET /v1/events` stream (all runs multiplexed via the broker's
+  wildcard subscription; live-only — clients bootstrap from the runs/approvals
+  snapshots, so no global resume semantics to maintain), with inline approval
+  decisions. Graduate to Terminal.Gui only if interaction depth demands it (pane
+  focus, scrollback, per-run drill-down) — that would also be the moment to split
+  binaries.
 
   Instance identity is the endpoint, dockerd-style: clients select a daemon with an
   endpoint flag/env (`--socket`/`ORKIS_SOCKET`, defaulting to the well-known path, and

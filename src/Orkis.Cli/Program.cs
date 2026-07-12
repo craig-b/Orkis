@@ -265,6 +265,13 @@ denyCommand.SetAction(
 );
 root.Subcommands.Add(denyCommand);
 
+// dash ---------------------------------------------------------------------------
+var dashCommand = new Command("dash", "Live dashboard: runs, pending approvals, and the event feed.");
+dashCommand.SetAction(
+    (parseResult, cancellationToken) => WithClient(parseResult, client => Dashboard.RunAsync(client, cancellationToken))
+);
+root.Subcommands.Add(dashCommand);
+
 // artifacts ----------------------------------------------------------------------
 var artifactsCommand = new Command("artifacts", "List promoted artifacts.");
 artifactsCommand.SetAction(

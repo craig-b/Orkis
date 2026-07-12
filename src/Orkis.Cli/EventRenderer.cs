@@ -8,7 +8,11 @@ namespace Orkis.Cli;
 /// <summary>Renders run events as human-readable console lines.</summary>
 internal static class EventRenderer
 {
-    public static void Render(RunEvent runEvent)
+    public static void Render(RunEvent runEvent) =>
+        AnsiConsole.MarkupLine($"[grey]{runEvent.Sequence, 3}[/] {Markup(runEvent)}");
+
+    /// <summary>The event's one-line markup, without sequence or run prefix.</summary>
+    public static string Markup(RunEvent runEvent)
     {
         var line = runEvent switch
         {
@@ -30,7 +34,7 @@ internal static class EventRenderer
                 + "(newer daemon? upgrade this client to see it)[/]",
             _ => $"[grey]{runEvent.GetType().Name.EscapeMarkup()}[/]",
         };
-        AnsiConsole.MarkupLine($"[grey]{runEvent.Sequence, 3}[/] {line}");
+        return line;
     }
 
     private static string RenderDecision(SupervisionDecidedEvent e)

@@ -58,6 +58,47 @@ public sealed class OrkisClientTests(DaemonFixture fixture) : IClassFixture<Daem
     }
 
     [Fact]
+    public async Task GlobalStreamMultiplexesEveryRun()
+    {
+        // Live-only stream: subscribe before starting the runs.
+        using var streamCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var seenRuns = new HashSet<string>(StringComparer.Ordinal);
+        var completedRuns = new HashSet<string>(StringComparer.Ordinal);
+
+        var streaming = Task.Run(async () =>
+        {
+            await foreach (var runEvent in _client.StreamAllEventsAsync(streamCancellation.Token))
+            {
+                seenRuns.Add(runEvent.RunId);
+                if (runEvent is RunCompletedEvent)
+                {
+                    completedRuns.Add(runEvent.RunId);
+                }
+
+                if (completedRuns.Count >= 2)
+                {
+                    return;
+                }
+            }
+        });
+
+        // Give the SSE connection a moment to establish before producing events.
+        await Task.Delay(250);
+        var first = await _client.StartRunAsync(
+            new StartRunRequest { Prompt = "Run the greeting command.", SupervisorKey = "yolo" }
+        );
+        var second = await _client.StartRunAsync(
+            new StartRunRequest { Prompt = "Run the greeting command.", SupervisorKey = "yolo" }
+        );
+
+        await streaming;
+        Assert.Contains(first.RunId, seenRuns);
+        Assert.Contains(second.RunId, seenRuns);
+        Assert.Contains(first.RunId, completedRuns);
+        Assert.Contains(second.RunId, completedRuns);
+    }
+
+    [Fact]
     public async Task SurfacesDaemonErrorsAsTypedExceptions()
     {
         Assert.Null(await _client.GetRunAsync("no-such-run"));

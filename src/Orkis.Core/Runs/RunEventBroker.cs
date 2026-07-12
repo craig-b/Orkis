@@ -12,6 +12,9 @@ namespace Orkis.Runs;
 /// </summary>
 public sealed class RunEventBroker : IRunEventSink
 {
+    /// <summary>Subscription key receiving every run's events.</summary>
+    private const string AllRuns = "*";
+
     private readonly IRunEventSink? _inner;
     private readonly Lock _lock = new();
     private readonly Dictionary<string, List<RunEventSubscription>> _subscriptions = new(StringComparer.Ordinal);
@@ -32,7 +35,13 @@ public sealed class RunEventBroker : IRunEventSink
         RunEventSubscription[] targets;
         lock (_lock)
         {
-            targets = _subscriptions.TryGetValue(runEvent.RunId, out var list) ? [.. list] : [];
+            var forRun = _subscriptions.TryGetValue(runEvent.RunId, out var list)
+                ? list
+                : (IReadOnlyList<RunEventSubscription>)[];
+            var forAll = _subscriptions.TryGetValue(AllRuns, out var wildcard)
+                ? wildcard
+                : (IReadOnlyList<RunEventSubscription>)[];
+            targets = [.. forRun, .. forAll];
         }
 
         foreach (var subscription in targets)
@@ -40,6 +49,12 @@ public sealed class RunEventBroker : IRunEventSink
             subscription.Publish(runEvent);
         }
     }
+
+    /// <summary>
+    /// Subscribes to every run's future events — one stream for dashboards, instead
+    /// of a connection per run. Dispose to unsubscribe.
+    /// </summary>
+    public RunEventSubscription SubscribeAll() => Subscribe(AllRuns);
 
     /// <summary>
     /// Subscribes to the run's future events. Dispose to unsubscribe; disposal completes
