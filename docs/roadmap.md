@@ -53,9 +53,10 @@ The through-lines these ideas are meant to respect:
   context management.
 - **Context management** `[idea]` — token budgeting, compaction, and summarisation as the
   transcript grows; deciding what retrieved material enters the window.
-- **Persistent vector stores** `[idea]` — SQLite / pgvector / Qdrant backends for
-  retrieval; in-memory is the only one today. Incremental, one backend at a time;
-  pairs naturally with wiring retrieval into the loop.
+- **Vector-native retrieval backends** `[idea]` — pgvector / Qdrant behind the same
+  `IChunkStore`/`IRetriever` interfaces, for corpora beyond what `SqliteVectorStore`'s
+  full-scan cosine handles (tens of thousands of chunks). pgvector doubles as part of
+  the compose stack's Postgres multi-duty story.
 - **Retrieval wired into the agent loop** `[idea]` — expose retrieval as a tool or a
   context source; depends on the context-management design.
 - **Execution floor** `[idea]` — a global minimum sandbox level ("everything runs in
