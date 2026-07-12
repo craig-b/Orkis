@@ -1,7 +1,15 @@
 // The gateway is same-origin, so this is plain fetch — with one wrinkle: a 401 means
 // "log in", handled by exchanging the token for a cookie session at /auth/session.
 
-import type { ApprovalResponse, CapabilitiesResponse, RunResponse, TranscriptMessage } from "./types.js";
+import type {
+  ApprovalResponse,
+  ArtifactInfo,
+  CapabilitiesResponse,
+  CreateScheduleRequest,
+  RunResponse,
+  ScheduleResponse,
+  TranscriptMessage,
+} from "./types.js";
 
 /** Raised on 401 so views can hand off to the login overlay. */
 export class Unauthorized extends Error {
@@ -61,7 +69,17 @@ export const api = {
       `/v1/approvals/${encodeURIComponent(runId)}/${encodeURIComponent(callId)}`,
       json(body),
     ),
+  artifacts: () => request<ArtifactInfo[]>("/v1/artifacts"),
+  schedules: () => request<ScheduleResponse[]>("/v1/schedules"),
+  createSchedule: (body: CreateScheduleRequest) => request<ScheduleResponse>("/v1/schedules", json(body)),
+  deleteSchedule: (id: string) =>
+    request<void>(`/v1/schedules/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
+
+/** Same-origin download URL for an artifact (the session cookie authenticates it). */
+export function artifactUrl(name: string): string {
+  return `/v1/artifacts/${encodeURIComponent(name)}`;
+}
 
 // The live event stream is opened once, in the app shell, with the browser's native
 // EventSource (see main.ts), and fanned out in-page via bus.ts — a single long-lived

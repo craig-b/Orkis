@@ -53,6 +53,27 @@ export interface ArtifactInfo {
   createdAt: string;
 }
 
+export interface ScheduleResponse {
+  id: string;
+  name: string;
+  cron: string;
+  prompt: string;
+  supervisorKey: string;
+  model?: string | null;
+  continuity: string;
+  enabled: boolean;
+  lastFiredAt?: string | null;
+  lastRunId?: string | null;
+}
+
+export interface CreateScheduleRequest {
+  name: string;
+  cron: string;
+  prompt: string;
+  supervisorKey?: string;
+  continuity?: string;
+}
+
 // Run events arrive with a $type discriminator; unknown types must not break the
 // stream (same forward-compat rule as the .NET client).
 export interface RunEvent {

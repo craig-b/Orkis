@@ -7,10 +7,12 @@ import { fireNotification, notifyPermission, requestNotifyPermission, type Notif
 import "./views/runs-view.js";
 import "./views/approvals-view.js";
 import "./views/chat-view.js";
+import "./views/schedules-view.js";
+import "./views/artifacts-view.js";
 import "./views/info-view.js";
 
-type Tab = "runs" | "approvals" | "chat" | "info";
-const tabs: Tab[] = ["runs", "approvals", "chat", "info"];
+type Tab = "runs" | "approvals" | "chat" | "schedules" | "artifacts" | "info";
+const tabs: Tab[] = ["runs", "approvals", "chat", "schedules", "artifacts", "info"];
 
 interface Toast {
   id: number;
@@ -152,6 +154,8 @@ export class OrkisApp extends LitElement {
         ${this.tab === "runs" ? html`<runs-view></runs-view>` : ""}
         ${this.tab === "approvals" ? html`<approvals-view></approvals-view>` : ""}
         ${this.tab === "chat" ? html`<chat-view></chat-view>` : ""}
+        ${this.tab === "schedules" ? html`<schedules-view></schedules-view>` : ""}
+        ${this.tab === "artifacts" ? html`<artifacts-view></artifacts-view>` : ""}
         ${this.tab === "info" ? html`<info-view></info-view>` : ""}
       </main>
       <div class="toasts">
