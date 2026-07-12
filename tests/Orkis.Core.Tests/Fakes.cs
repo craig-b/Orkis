@@ -117,6 +117,35 @@ internal sealed class FakeSandboxedTool(string name = "sandboxed_tool") : ISandb
     }
 }
 
+/// <summary>An in-memory <see cref="Orkis.Memory.IMemoryStore"/> that records writes and scripts search results.</summary>
+internal sealed class FakeMemoryStore : Orkis.Memory.IMemoryStore
+{
+    public List<Orkis.Memory.MemoryEntry> Written { get; } = [];
+
+    public List<(string Query, string Scope)> Searches { get; } = [];
+
+    public List<Scored<Orkis.Memory.MemoryEntry>> SearchResults { get; } = [];
+
+    public Task WriteAsync(Orkis.Memory.MemoryEntry entry, CancellationToken cancellationToken = default)
+    {
+        Written.Add(entry);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<Scored<Orkis.Memory.MemoryEntry>>> SearchAsync(
+        string query,
+        string scope = Orkis.Memory.MemoryScopes.Global,
+        int topK = 8,
+        CancellationToken cancellationToken = default
+    )
+    {
+        Searches.Add((query, scope));
+        return Task.FromResult<IReadOnlyList<Scored<Orkis.Memory.MemoryEntry>>>([.. SearchResults.Take(topK)]);
+    }
+
+    public Task DeleteAsync(string id, CancellationToken cancellationToken = default) => Task.CompletedTask;
+}
+
 /// <summary>A cost calculator that charges a fixed amount per model call.</summary>
 internal sealed class FixedCostCalculator(decimal perCall) : Orkis.Runs.ICostCalculator
 {

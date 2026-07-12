@@ -48,17 +48,11 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 2 — Medium-term (design mostly clear, larger or dependent)
 
-- **Agent-written memory** `[abstraction]` — design settled: explicit `save_memory` /
-  `search_memories` tools (writes are `Mutating`, so supervision sees what the agent
-  wants to remember; a wrong scope is corrected by deny-with-reason, never by the
-  approver rewriting arguments — supervision gates, it does not ghost-write).
-  `MemoryEntry.Scope` is first-class with `"global"` the default; runs carry a
-  `MemoryScope` (the `WorkspaceKey` pattern — a scheduled job scopes its own memory);
-  reads search the run's scope plus global. Top-K relevant memories inject at run
-  start, framed as untrusted recollections (memory is model-authored content
-  re-entering prompts — a prompt-injection persistence vector; provenance metadata,
-  supervised writes, and host-policy retention are the mitigations). Backend:
-  the `SqliteVectorStore` pattern transplanted.
+- **Demo embedding provider** `[idea]` — the demo host wires no
+  `IEmbeddingGenerator`, so the built memory and retrieval capabilities are
+  library-only there. Wire one for live OpenAI runs (Anthropic exposes no embeddings
+  endpoint) or a small local model, so `save_memory`/`search_memories`/`search_corpus`
+  become demoable.
 - **Context management** `[idea]` — design settled at the top level: run state keeps
   the full transcript forever (checkpoints, audit, future evals); an `IContextPolicy`
   the runner consults per model call produces the compact view, caching summaries in

@@ -14,6 +14,13 @@ public sealed record MemoryEntry
     /// <summary>The remembered fact or observation.</summary>
     public required string Text { get; init; }
 
+    /// <summary>
+    /// The scope this memory belongs to. Scope is part of the memory's meaning —
+    /// "worth remembering for this workload" versus "for everyone" — chosen by
+    /// whoever writes it. Searches see one scope plus <see cref="MemoryScopes.Global"/>.
+    /// </summary>
+    public string Scope { get; init; } = MemoryScopes.Global;
+
     /// <summary>When the memory was recorded.</summary>
     public required DateTimeOffset CreatedAt { get; init; }
 

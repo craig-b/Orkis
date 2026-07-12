@@ -26,6 +26,13 @@ public sealed record AgentRunRequest
     public IReadOnlyList<string>? ToolNames { get; init; }
 
     /// <summary>
+    /// The memory scope this run recalls from (plus <see cref="Orkis.Memory.MemoryScopes.Global"/>)
+    /// when a memory store is available — a scheduled job would scope its own memory
+    /// here. Hosts should construct the memory tools with the same scope.
+    /// </summary>
+    public string MemoryScope { get; init; } = Orkis.Memory.MemoryScopes.Global;
+
+    /// <summary>
     /// Key of the supervisor governing this run. Checkpointed with the run's state, so a
     /// resumed run reconnects to the same supervision policy.
     /// </summary>
