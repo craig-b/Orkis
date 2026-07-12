@@ -200,6 +200,12 @@ var checkpointDir =
     Environment.GetEnvironmentVariable("ORKIS_CHECKPOINT_DIR")
     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "orkis", "checkpoints");
 services.AddOrkisFileCheckpointStore(options => options.RootPath = checkpointDir);
+
+// Durable event logs: every run leaves a JSON-lines history for UIs and evals.
+var eventDir =
+    Environment.GetEnvironmentVariable("ORKIS_EVENT_DIR")
+    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "orkis", "events");
+services.AddOrkisFileRunEvents(options => options.RootPath = eventDir);
 switch (sandbox)
 {
     case "firecracker":

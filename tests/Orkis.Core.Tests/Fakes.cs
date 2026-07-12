@@ -117,6 +117,18 @@ internal sealed class FakeSandboxedTool(string name = "sandboxed_tool") : ISandb
     }
 }
 
+/// <summary>Collects run events in order.</summary>
+internal sealed class FakeRunEventSink : Orkis.Runs.IRunEventSink
+{
+    public List<Orkis.Runs.RunEvent> Events { get; } = [];
+
+    public ValueTask WriteAsync(Orkis.Runs.RunEvent runEvent, CancellationToken cancellationToken = default)
+    {
+        Events.Add(runEvent);
+        return ValueTask.CompletedTask;
+    }
+}
+
 /// <summary>An in-memory <see cref="Orkis.Memory.IMemoryStore"/> that records writes and scripts search results.</summary>
 internal sealed class FakeMemoryStore : Orkis.Memory.IMemoryStore
 {

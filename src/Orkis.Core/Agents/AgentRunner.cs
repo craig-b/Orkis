@@ -50,6 +50,7 @@ public sealed class AgentRunner
     private readonly IToolCatalog? _toolCatalog;
     private readonly IMemoryStore? _memoryStore;
     private readonly IContextPolicy? _contextPolicy;
+    private readonly IRunEventSink? _eventSink;
     private readonly FrozenDictionary<string, ITool> _tools;
 
     public AgentRunner(
@@ -61,7 +62,8 @@ public sealed class AgentRunner
         ICostCalculator? costCalculator = null,
         IToolCatalog? toolCatalog = null,
         IMemoryStore? memoryStore = null,
-        IContextPolicy? contextPolicy = null
+        IContextPolicy? contextPolicy = null,
+        IRunEventSink? eventSink = null
     )
     {
         ArgumentNullException.ThrowIfNull(chatClient);
@@ -78,8 +80,31 @@ public sealed class AgentRunner
         _toolCatalog = toolCatalog;
         _memoryStore = memoryStore;
         _contextPolicy = contextPolicy;
+        _eventSink = eventSink;
         _tools = tools.ToFrozenDictionary(t => t.Descriptor.Name);
     }
+
+    /// <summary>
+    /// Emits one run event, consuming the state's event sequence. Sequence consumption
+    /// precedes the next checkpoint, so a resumed run continues numbering where the
+    /// log left off.
+    /// </summary>
+    private async ValueTask EmitAsync(
+        AgentRunState state,
+        Func<long, DateTimeOffset, RunEvent> factory,
+        CancellationToken cancellationToken
+    )
+    {
+        if (_eventSink is null)
+        {
+            return;
+        }
+
+        var runEvent = factory(state.NextEventSequence++, _timeProvider.GetUtcNow());
+        await _eventSink.WriteAsync(runEvent, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string Preview(string? text) => text is null ? "" : (text.Length <= 500 ? text : text[..500] + "…");
 
     /// <summary>Starts a new run and executes it until it completes or pauses.</summary>
     public async Task<AgentRunResult> StartAsync(AgentRunRequest request, CancellationToken cancellationToken = default)
@@ -130,6 +155,21 @@ public sealed class AgentRunner
         }
 
         state.Messages.Add(new ChatMessage(ChatRole.User, request.Prompt));
+
+        await EmitAsync(
+                state,
+                (sequence, at) =>
+                    new RunStartedEvent
+                    {
+                        RunId = state.RunId,
+                        Sequence = sequence,
+                        Timestamp = at,
+                        Prompt = request.Prompt,
+                        SupervisorKey = request.SupervisorKey,
+                    },
+                cancellationToken
+            )
+            .ConfigureAwait(false);
 
         // The injected recollections live in the checkpointed transcript, so a resumed
         // run neither loses nor re-injects them.
@@ -192,6 +232,18 @@ public sealed class AgentRunner
         }
 
         state.Status = RunStatus.Running;
+        await EmitAsync(
+                state,
+                (sequence, at) =>
+                    new RunResumedEvent
+                    {
+                        RunId = state.RunId,
+                        Sequence = sequence,
+                        Timestamp = at,
+                    },
+                cancellationToken
+            )
+            .ConfigureAwait(false);
         return await RunLoopAsync(state, cancellationToken).ConfigureAwait(false);
     }
 
@@ -264,6 +316,23 @@ public sealed class AgentRunner
                     new ChatMessage(ChatRole.Tool, [new FunctionResultContent(result.ToolCallId, result.Content)])
                 );
                 state.PendingToolCalls.RemoveAt(0);
+                await EmitAsync(
+                        state,
+                        (sequence, at) =>
+                            new ToolCallCompletedEvent
+                            {
+                                RunId = state.RunId,
+                                Sequence = sequence,
+                                Timestamp = at,
+                                CallId = toolCall.Id,
+                                ToolName = toolCall.ToolName,
+                                IsError = result.IsError,
+                                ContentPreview = Preview(result.Content),
+                                ContentLength = result.Content.Length,
+                            },
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
                 await CheckpointAsync(state, cancellationToken).ConfigureAwait(false);
             }
 
@@ -358,6 +427,23 @@ public sealed class AgentRunner
                     state.Cost += callCost;
                     OrkisInstrumentation.Cost.Add((double)callCost);
                 }
+
+                await EmitAsync(
+                        state,
+                        (sequence, at) =>
+                            new ModelCallCompletedEvent
+                            {
+                                RunId = state.RunId,
+                                Sequence = sequence,
+                                Timestamp = at,
+                                InputTokens = inputTokens,
+                                OutputTokens = outputTokens,
+                                Cost = callCost,
+                                ModelId = response.ModelId,
+                            },
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
             }
 
             var toolCalls = response
@@ -378,6 +464,25 @@ public sealed class AgentRunner
             }
 
             state.PendingToolCalls.AddRange(toolCalls);
+            foreach (var proposed in toolCalls)
+            {
+                await EmitAsync(
+                        state,
+                        (sequence, at) =>
+                            new ToolCallProposedEvent
+                            {
+                                RunId = state.RunId,
+                                Sequence = sequence,
+                                Timestamp = at,
+                                CallId = proposed.Id,
+                                ToolName = proposed.ToolName,
+                                ArgumentsJson = proposed.Arguments.GetRawText(),
+                            },
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
+            }
+
             await CheckpointAsync(state, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -404,6 +509,7 @@ public sealed class AgentRunner
                     cancellationToken
                 )
                 .ConfigureAwait(false);
+            await EmitDecisionAsync(state, toolCall, searchDecision, cancellationToken).ConfigureAwait(false);
             if (searchDecision.Verdict == SupervisionVerdict.Pending)
             {
                 return null;
@@ -430,6 +536,7 @@ public sealed class AgentRunner
 
         var decision = await ReviewAsync(state, supervisor, toolCall, tool.Descriptor, cancellationToken)
             .ConfigureAwait(false);
+        await EmitDecisionAsync(state, toolCall, decision, cancellationToken).ConfigureAwait(false);
 
         if (decision.Verdict == SupervisionVerdict.Pending)
         {
@@ -480,6 +587,30 @@ public sealed class AgentRunner
         RecordToolCall(toolCall.ToolName, result.IsError ? "error" : "executed");
         return result;
     }
+
+    private ValueTask EmitDecisionAsync(
+        AgentRunState state,
+        ToolCall toolCall,
+        SupervisionDecision decision,
+        CancellationToken cancellationToken
+    ) =>
+        EmitAsync(
+            state,
+            (sequence, at) =>
+                new SupervisionDecidedEvent
+                {
+                    RunId = state.RunId,
+                    Sequence = sequence,
+                    Timestamp = at,
+                    CallId = toolCall.Id,
+                    ToolName = toolCall.ToolName,
+                    Verdict = decision.Verdict.ToString(),
+                    Reason = decision.Reason,
+                    RequiredSandboxLevel = decision.RequiredSandboxLevel?.ToString(),
+                    GrantedNetwork = decision.GrantedNetwork?.ToString(),
+                },
+            cancellationToken
+        );
 
     /// <summary>
     /// The tools available to the run right now: the always-on core (restricted by the
@@ -662,6 +793,46 @@ public sealed class AgentRunner
     {
         state.ActiveDuration += _timeProvider.GetElapsedTime(segmentStart);
         state.Status = status;
+
+        if (status == RunStatus.AwaitingSupervision)
+        {
+            await EmitAsync(
+                    state,
+                    (sequence, at) =>
+                        new RunPausedEvent
+                        {
+                            RunId = state.RunId,
+                            Sequence = sequence,
+                            Timestamp = at,
+                        },
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            await EmitAsync(
+                    state,
+                    (sequence, at) =>
+                        new RunCompletedEvent
+                        {
+                            RunId = state.RunId,
+                            Sequence = sequence,
+                            Timestamp = at,
+                            Status = status.ToString(),
+                            InputTokens = state.InputTokens,
+                            OutputTokens = state.OutputTokens,
+                            Cost = state.Cost,
+                            ToolCalls = state.ToolCallCount,
+                            FinalTextPreview = Preview(
+                                state.Messages.LastOrDefault(m => m.Role == ChatRole.Assistant)?.Text
+                            ),
+                        },
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+        }
+
         await CheckpointAsync(state, cancellationToken).ConfigureAwait(false);
 
         return new AgentRunResult

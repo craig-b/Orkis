@@ -55,6 +55,9 @@ internal sealed class AgentRunState
     /// <summary>Sequence number the next checkpoint will use.</summary>
     public long NextSequence { get; set; }
 
+    /// <summary>Sequence number the next run event will use.</summary>
+    public long NextEventSequence { get; set; }
+
     /// <summary>
     /// Cache written by the context policy (summaries keyed by transcript range), so
     /// compaction work survives checkpoint and resume. The transcript itself is never
