@@ -8,7 +8,8 @@ public enum NetworkMode
 
     /// <summary>
     /// Egress to the public internet, with the host, private ranges (RFC1918), link-local,
-    /// and cloud metadata addresses blocked. Not yet implemented.
+    /// and cloud metadata addresses blocked. Enforced by host firewall rules provisioned
+    /// once by <c>scripts/setup-firecracker-network.sh</c>.
     /// </summary>
     RestrictedEgress = 1,
 
@@ -20,17 +21,20 @@ public enum NetworkMode
 /// The network access granted to a sandboxed execution.
 /// </summary>
 /// <remarks>
-/// Only <see cref="NetworkMode.None"/> is implemented today. The richer modes are
-/// scaffolding for a future, supervision-gated network capability: the intent is that a
+/// <see cref="NetworkMode.None"/> and <see cref="NetworkMode.RestrictedEgress"/> are
+/// implemented by the Firecracker sandbox; <see cref="NetworkMode.Allowlist"/> is
+/// scaffolding for a future SNI-filtering proxy. The longer-term intent is that a
 /// supervisor grants network reach per run — as it already grants a required sandbox
-/// level — and that only sandboxes which genuinely control the network (such as
-/// Firecracker micro-VMs) honor it. Namespace- and process-based sandboxes currently
-/// share the host's network and do not enforce this policy.
+/// level. Namespace- and process-based sandboxes currently share the host's network
+/// and do not enforce this policy.
 /// </remarks>
 public sealed record NetworkPolicy
 {
-    /// <summary>No network access. The default and, currently, the only supported policy.</summary>
+    /// <summary>No network access. The default.</summary>
     public static NetworkPolicy None { get; } = new();
+
+    /// <summary>Public-internet egress only; the host and private ranges are unreachable.</summary>
+    public static NetworkPolicy RestrictedEgress { get; } = new() { Mode = NetworkMode.RestrictedEgress };
 
     /// <summary>The access mode.</summary>
     public NetworkMode Mode { get; init; } = NetworkMode.None;

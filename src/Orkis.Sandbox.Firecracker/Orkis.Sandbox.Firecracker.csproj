@@ -7,4 +7,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Orkis.Abstractions\Orkis.Abstractions.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Orkis.Sandbox.Firecracker.Tests" />
+  </ItemGroup>
 </Project>

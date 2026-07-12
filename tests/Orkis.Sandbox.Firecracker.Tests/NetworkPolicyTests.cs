@@ -21,21 +21,55 @@ public sealed class NetworkPolicyTests
     [Fact]
     public void DefaultsToNoNetwork() => Assert.Equal(NetworkMode.None, new FirecrackerSandboxOptions().Network.Mode);
 
-    [Fact]
-    public void NonePolicyIsAccepted()
+    [Theory]
+    [InlineData(NetworkMode.None)]
+    [InlineData(NetworkMode.RestrictedEgress)]
+    public void ImplementedPoliciesAreAccepted(NetworkMode mode)
     {
-        var sandbox = Create(NetworkPolicy.None);
+        var sandbox = Create(new NetworkPolicy { Mode = mode });
         Assert.Equal(SandboxLevel.Strict, sandbox.Level);
     }
 
-    [Theory]
-    [InlineData(NetworkMode.RestrictedEgress)]
-    [InlineData(NetworkMode.Allowlist)]
-    public void UnimplementedPoliciesFailFast(NetworkMode mode)
+    [Fact]
+    public void AllowlistFailsFast()
     {
-        var policy = new NetworkPolicy { Mode = mode, AllowedDomains = ["example.com"] };
+        var policy = new NetworkPolicy { Mode = NetworkMode.Allowlist, AllowedDomains = ["example.com"] };
 
         var exception = Assert.Throws<NotSupportedException>(() => Create(policy));
-        Assert.Contains(mode.ToString(), exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Allowlist", exception.Message, StringComparison.Ordinal);
+    }
+}
+
+public sealed class TapLeaseTests
+{
+    // A distinct prefix so these tests never contend with real orkis-tap locks.
+    private static readonly string Prefix = $"orkistest{Guid.NewGuid():n}"[..12] + "-tap";
+
+    [Fact]
+    public void ReturnsNullWhenNoDevicesAreProvisioned()
+    {
+        Assert.Null(TapLease.TryAcquire(Prefix, 4, static _ => false));
+    }
+
+    [Fact]
+    public void AcquiresDistinctDevicesAndReleasesOnDispose()
+    {
+        using var first = TapLease.TryAcquire(Prefix, 2, static _ => true);
+        var second = TapLease.TryAcquire(Prefix, 2, static _ => true);
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.Equal(0, first.Index);
+        Assert.Equal(1, second.Index);
+        Assert.Equal(Prefix + "0", first.DeviceName);
+
+        // Pool exhausted while both are held.
+        Assert.Null(TapLease.TryAcquire(Prefix, 2, static _ => true));
+
+        // Releasing one frees exactly that device.
+        second.Dispose();
+        using var reacquired = TapLease.TryAcquire(Prefix, 2, static _ => true);
+        Assert.NotNull(reacquired);
+        Assert.Equal(1, reacquired.Index);
     }
 }

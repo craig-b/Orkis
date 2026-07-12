@@ -71,6 +71,10 @@ install -m 0755 "$SCRIPT_DIR/guest/init.sh" "$ROOT/init"
 install -m 0644 "$SCRIPT_DIR/guest/orkis-agent.py" -D "$ROOT/opt/orkis-agent.py"
 mkdir -p "$ROOT/work"
 
+# The rootfs mounts read-only, so DNS config must live somewhere writable: make
+# /etc/resolv.conf a symlink into /tmp, written by /init when networking is on.
+ln -sf /tmp/resolv.conf "$ROOT/etc/resolv.conf"
+
 # --- Pack into an ext4 image ---
 echo "Building rootfs image..."
 rm -f "$DEST/rootfs.ext4"

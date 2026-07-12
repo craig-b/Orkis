@@ -12,6 +12,19 @@ mount -t tmpfs tmpfs /tmp
 mount -t devtmpfs dev /dev 2> /dev/null
 mount /dev/vdb /work
 
+# Restricted egress: the host passes orkis.net=<addr>/<prefix>:<gateway> when the
+# VM has a network device. /etc/resolv.conf is a symlink to /tmp/resolv.conf in
+# the (read-only) rootfs, so DNS config can be written at boot.
+net="$(sed -n 's/.*orkis\.net=\([^ ]*\).*/\1/p' /proc/cmdline)"
+if [ -n "$net" ]; then
+  addr="${net%%:*}"
+  gateway="${net##*:}"
+  ip link set eth0 up
+  ip addr add "$addr" dev eth0
+  ip route add default via "$gateway"
+  printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /tmp/resolv.conf
+fi
+
 if grep -q orkis.mode=agent /proc/cmdline && [ -f /opt/orkis-agent.py ] && command -v python3 > /dev/null; then
   echo "===ORKIS:AGENT==="
   exec python3 /opt/orkis-agent.py

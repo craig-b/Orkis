@@ -21,6 +21,7 @@ internal sealed class FirecrackerWarmVm : IAsyncDisposable
     private readonly string _vsockPath;
     private readonly TimeSpan _idleTimeout;
     private readonly ITimer _idleTimer;
+    private readonly IDisposable? _networkLease;
     private readonly Lock _stateLock = new();
     private int _inFlight;
     private bool _disposed;
@@ -31,13 +32,15 @@ internal sealed class FirecrackerWarmVm : IAsyncDisposable
         string vsockPath,
         TimeSpan idleTimeout,
         Action<FirecrackerWarmVm> onIdle,
-        TimeProvider timeProvider
+        TimeProvider timeProvider,
+        IDisposable? networkLease
     )
     {
         _process = process;
         _vmDirectory = vmDirectory;
         _vsockPath = vsockPath;
         _idleTimeout = idleTimeout;
+        _networkLease = networkLease;
         _idleTimer = timeProvider.CreateTimer(
             _ =>
             {
@@ -81,6 +84,7 @@ internal sealed class FirecrackerWarmVm : IAsyncDisposable
         string vmDirectory,
         Action<FirecrackerWarmVm> onIdle,
         TimeProvider timeProvider,
+        IDisposable? networkLease,
         CancellationToken cancellationToken
     )
     {
@@ -120,7 +124,15 @@ internal sealed class FirecrackerWarmVm : IAsyncDisposable
             {
                 var probe = await ConnectToAgentAsync(vsockPath, cancellationToken).ConfigureAwait(false);
                 await probe.DisposeAsync().ConfigureAwait(false);
-                return new FirecrackerWarmVm(process, vmDirectory, vsockPath, options.WarmVmIdleTimeout, onIdle, timeProvider);
+                return new FirecrackerWarmVm(
+                    process,
+                    vmDirectory,
+                    vsockPath,
+                    options.WarmVmIdleTimeout,
+                    onIdle,
+                    timeProvider,
+                    networkLease
+                );
             }
             catch (Exception ex) when (ex is SocketException or IOException)
             {
@@ -133,6 +145,7 @@ internal sealed class FirecrackerWarmVm : IAsyncDisposable
         TryKill(process);
         process.Dispose();
         TryDeleteDirectory(vmDirectory);
+        networkLease?.Dispose();
         return null;
     }
 
@@ -215,6 +228,7 @@ internal sealed class FirecrackerWarmVm : IAsyncDisposable
 
         _process.Dispose();
         TryDeleteDirectory(_vmDirectory);
+        _networkLease?.Dispose();
     }
 
     private static async Task<NetworkStream> ConnectToAgentAsync(string vsockPath, CancellationToken cancellationToken)

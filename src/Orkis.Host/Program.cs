@@ -191,10 +191,14 @@ services.AddOrkisFileCheckpointStore(options => options.RootPath = checkpointDir
 switch (sandbox)
 {
     case "firecracker":
+        // ORKIS_NETWORK=egress grants public-internet-only access (host and private
+        // ranges blocked); needs scripts/setup-firecracker-network.sh run once.
+        var egress = Environment.GetEnvironmentVariable("ORKIS_NETWORK")?.ToLowerInvariant() == "egress";
         services.AddOrkisFirecrackerSandbox(options =>
         {
             options.KernelImagePath = firecrackerKernel;
             options.RootfsImagePath = firecrackerRootfs;
+            options.Network = egress ? NetworkPolicy.RestrictedEgress : NetworkPolicy.None;
         });
         break;
     case "bubblewrap":

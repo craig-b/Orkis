@@ -50,10 +50,25 @@ public sealed class FirecrackerSandboxOptions
     public int ScratchSizeMib { get; set; } = 64;
 
     /// <summary>
-    /// Network access granted to the micro-VM. Only <see cref="NetworkPolicy.None"/> is
-    /// implemented; configuring any other mode fails fast. See <see cref="NetworkPolicy"/>.
+    /// Network access granted to the micro-VM. <see cref="NetworkPolicy.None"/> (the
+    /// default) and <see cref="NetworkPolicy.RestrictedEgress"/> are supported;
+    /// restricted egress requires the host plumbing provisioned once by
+    /// <c>scripts/setup-firecracker-network.sh</c>. <see cref="NetworkMode.Allowlist"/>
+    /// fails fast.
     /// </summary>
     public NetworkPolicy Network { get; set; } = NetworkPolicy.None;
+
+    /// <summary>Name prefix of the pre-provisioned TAP device pool.</summary>
+    public string TapDevicePrefix { get; set; } = "orkis-tap";
+
+    /// <summary>Size of the TAP pool — the maximum number of concurrently networked VMs.</summary>
+    public int TapPoolSize { get; set; } = 8;
+
+    /// <summary>
+    /// First three octets of the guest /24 network; must match the subnet the setup
+    /// script provisioned. The gateway is .1 and a VM on TAP index N is .(N+2).
+    /// </summary>
+    public string GuestSubnetPrefix { get; set; } = "172.30.0";
 
     /// <summary>Timeout applied when a request does not specify one.</summary>
     public TimeSpan DefaultTimeout { get; set; } = TimeSpan.FromSeconds(60);

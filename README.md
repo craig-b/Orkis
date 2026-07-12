@@ -85,6 +85,17 @@ The demo auto-selects the strongest available sandbox — Firecracker micro-VMs
 kernel and rootfs), then bubblewrap, then plain process isolation — overridable
 with `ORKIS_SANDBOX=firecracker|bubblewrap|process`.
 
+Sandboxed code has no network by default. Firecracker VMs can be granted
+public-internet-only egress — the host, LAN/private ranges, and the cloud
+metadata address stay unreachable — after a one-time, auditable host setup
+(bridge, a user-owned TAP pool, and nftables rules; idempotent, re-run after
+reboot):
+
+```sh
+sudo scripts/setup-firecracker-network.sh        # provision (--remove undoes it)
+ORKIS_NETWORK=egress dotnet run --project src/Orkis.Host -- "fetch https://example.com and summarize it"
+```
+
 Shell commands run in a persistent workspace scoped per sandbox type
 (`ORKIS_WORKSPACE` names it; `default` otherwise), so files written by one command
 — or one run — are still there for the next. On Firecracker, a rootfs carrying the

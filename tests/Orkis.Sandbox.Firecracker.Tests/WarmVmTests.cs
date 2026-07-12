@@ -30,6 +30,10 @@ public sealed class PatchedRootfsFixture : IDisposable
         Debugfs(patched, "mkdir /opt");
         Debugfs(patched, $"write {Path.Combine(repoRoot, "scripts", "guest", "orkis-agent.py")} /opt/orkis-agent.py");
 
+        // DNS config must be writable on the read-only rootfs (see setup-firecracker.sh).
+        Debugfs(patched, "rm /etc/resolv.conf");
+        Debugfs(patched, "symlink /etc/resolv.conf /tmp/resolv.conf");
+
         RootfsPath = patched;
     }
 

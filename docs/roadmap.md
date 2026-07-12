@@ -40,16 +40,17 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 1 — Near-term (well-specified, clear next steps)
 
-- **Firecracker networking — Phase 1: restricted egress** `[scaffold]` — TAP + NAT with
-  a hardened nftables ruleset that blocks the host, RFC1918 ranges, link-local, and the
-  cloud metadata address, allowing only public egress. Unlocks `curl`/`pip`. `[scaffold]`
-  because `NetworkPolicy` exists (None-only). Note: needs privileged host setup
-  (`CAP_NET_ADMIN`) and pairs with jailer hardening.
+*(empty — the original tier is fully built; items graduate here from Tier 2 as
+designs firm up)*
 
 ## Tier 2 — Medium-term (design mostly clear, larger or dependent)
 
 - **AI supervisor** `[idea]` — an LLM-based approval policy behind `ISupervisor`,
   composable with escalation (e.g. AI approves low-risk, escalates the rest).
+- **Per-run network grants** `[idea]` — today `NetworkPolicy` is fixed per sandbox at
+  the composition root; principle 2 wants network reach granted per run by the
+  supervisor, like sandbox levels. Needs a grant to flow from `SupervisionDecision`
+  into the execution request.
 - **Agent-written memory: implementation + loop wiring** `[abstraction]` — `IMemoryStore`
   exists; needs a backend and a design for how the loop reads/writes memory. Overlaps
   context management.

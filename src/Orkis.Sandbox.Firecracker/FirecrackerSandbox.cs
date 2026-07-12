@@ -64,11 +64,10 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
             );
         }
 
-        if (_options.Network.Mode != NetworkMode.None)
+        if (_options.Network.Mode == NetworkMode.Allowlist)
         {
             throw new NotSupportedException(
-                $"Network mode {_options.Network.Mode} is not yet implemented; only NetworkMode.None is supported. "
-                    + "The micro-VM is configured with no network device."
+                "NetworkMode.Allowlist is not yet implemented; use None or RestrictedEgress."
             );
         }
     }
@@ -261,9 +260,22 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
         }
 
         var vmDirectory = Path.Combine(_options.WorkingRoot, "vms", Guid.CreateVersion7().ToString("n"));
-        var vmConfig = BuildVmConfig(workspaceImage, Path.Combine(vmDirectory, "vsock.sock"));
+        var networkLease = AcquireNetworkLease();
+        string vmConfig;
+        try
+        {
+            vmConfig = BuildVmConfig(workspaceImage, Path.Combine(vmDirectory, "vsock.sock"), networkLease);
+        }
+        catch
+        {
+            networkLease?.Dispose();
+            throw;
+        }
+
+        // TryBootAsync owns the lease from here: released on boot failure, or with the
+        // VM's disposal — a warm VM keeps its TAP for its whole lifetime.
         var vm = await FirecrackerWarmVm
-            .TryBootAsync(_options, vmConfig, vmDirectory, HandleVmIdle, _timeProvider, cancellationToken)
+            .TryBootAsync(_options, vmConfig, vmDirectory, HandleVmIdle, _timeProvider, networkLease, cancellationToken)
             .ConfigureAwait(false);
         if (vm is null)
         {
@@ -389,8 +401,15 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
         CancellationToken cancellationToken
     )
     {
+        // The lease outlives the whole VM run; disposing it frees the TAP for reuse.
+        using var networkLease = AcquireNetworkLease();
+
         var configPath = Path.Combine(executionDirectory, "vm.json");
-        await File.WriteAllTextAsync(configPath, BuildVmConfig(scratchImagePath), cancellationToken)
+        await File.WriteAllTextAsync(
+                configPath,
+                BuildVmConfig(scratchImagePath, vsockUdsPath: null, networkLease),
+                cancellationToken
+            )
             .ConfigureAwait(false);
 
         var startInfo = new ProcessStartInfo { FileName = _options.FirecrackerPath };
@@ -715,12 +734,38 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
         }
     }
 
-    private string BuildVmConfig(string scratchImagePath, string? vsockUdsPath = null)
+    /// <summary>
+    /// Acquires a TAP lease when the policy grants network access, or
+    /// <see langword="null"/> for <see cref="NetworkMode.None"/>.
+    /// </summary>
+    private TapLease? AcquireNetworkLease()
+    {
+        if (_options.Network.Mode != NetworkMode.RestrictedEgress)
+        {
+            return null;
+        }
+
+        return TapLease.TryAcquire(_options.TapDevicePrefix, _options.TapPoolSize)
+            ?? throw new InvalidOperationException(
+                "RestrictedEgress needs a free pre-provisioned TAP device and none was available. "
+                    + "Run scripts/setup-firecracker-network.sh once (with sudo), or reduce concurrent "
+                    + "networked VMs."
+            );
+    }
+
+    private string BuildVmConfig(string scratchImagePath, string? vsockUdsPath = null, TapLease? network = null)
     {
         var bootArgs = "console=ttyS0 reboot=k panic=1 pci=off quiet loglevel=0 init=/init";
         if (vsockUdsPath is not null)
         {
             bootArgs += " orkis.mode=agent";
+        }
+
+        if (network is not null)
+        {
+            // The guest's static address derives from its TAP index; /init applies it.
+            bootArgs +=
+                $" orkis.net={_options.GuestSubnetPrefix}.{network.Index + 2}/24:{_options.GuestSubnetPrefix}.1";
         }
 
         var config = new Dictionary<string, object>
@@ -747,7 +792,8 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
                     ["is_read_only"] = false,
                 },
             },
-            // No "network-interfaces": NetworkPolicy.None means the VM has no NIC at all.
+            // With NetworkPolicy.None the VM has no NIC at all; "network-interfaces"
+            // is added below only for RestrictedEgress.
             ["machine-config"] = new Dictionary<string, object>
             {
                 ["vcpu_count"] = _options.VcpuCount,
@@ -755,6 +801,19 @@ public sealed class FirecrackerSandbox : ISandbox, IWorkspaceFileAccess, IAsyncD
                 ["smt"] = false,
             },
         };
+        if (network is not null)
+        {
+            config["network-interfaces"] = new[]
+            {
+                new Dictionary<string, object>
+                {
+                    ["iface_id"] = "eth0",
+                    ["host_dev_name"] = network.DeviceName,
+                    ["guest_mac"] = $"06:6F:72:6B:00:{network.Index:X2}",
+                },
+            };
+        }
+
         if (vsockUdsPath is not null)
         {
             config["vsock"] = new Dictionary<string, object>
