@@ -6,6 +6,8 @@ using Orkis.Agents;
 using Orkis.Artifacts;
 using Orkis.Clients;
 using Orkis.Host;
+using Orkis.Memory;
+using Orkis.Retrieval;
 using Orkis.Runs;
 using Orkis.Sandboxing;
 using Orkis.Supervision;
@@ -363,7 +365,58 @@ services.AddSingleton(
         .Build()
 );
 
+// Memory and retrieval need an embeddings endpoint, which OpenAI has and Anthropic
+// does not: with one available, the SQLite memory store plus save/search tools come
+// on, and ORKIS_CORPUS_DIR additionally indexes a document directory for
+// search_corpus (reranked with the chat model).
+var embeddingsAvailable = !offline && provider == "openai";
+var corpusDir = Environment.GetEnvironmentVariable("ORKIS_CORPUS_DIR");
+if (embeddingsAvailable)
+{
+    var embeddingModel = Environment.GetEnvironmentVariable("ORKIS_EMBEDDING_MODEL") ?? "text-embedding-3-small";
+    services.AddSingleton(new OpenAIClient(openAiKey).GetEmbeddingClient(embeddingModel).AsIEmbeddingGenerator());
+    services.AddOrkisSqliteMemoryStore(options =>
+        options.DatabasePath =
+            Environment.GetEnvironmentVariable("ORKIS_MEMORY_DB")
+            ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "orkis",
+                "memory.db"
+            )
+    );
+    services.AddSingleton<ITool>(sp => new ConsoleLoggingTool(
+        new SaveMemoryTool(sp.GetRequiredService<IMemoryStore>(), timeProvider: sp.GetRequiredService<TimeProvider>())
+    ));
+    services.AddSingleton<ITool>(sp => new ConsoleLoggingTool(
+        new SearchMemoriesTool(sp.GetRequiredService<IMemoryStore>())
+    ));
+
+    if (!string.IsNullOrEmpty(corpusDir))
+    {
+        services.AddOrkisInMemoryRag();
+        services.AddOrkisHtmlParser();
+        services.AddOrkisPdfParser();
+        services.AddOrkisSqliteVectorStore(options =>
+            options.DatabasePath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "orkis",
+                "corpus.db"
+            )
+        );
+        services.AddOrkisChatClientReranker();
+        services.AddSingleton<ITool>(sp => new ConsoleLoggingTool(
+            new RetrievalTool(sp.GetRequiredService<IRetriever>(), sp.GetService<IReranker>())
+        ));
+    }
+}
+
 await using var serviceProvider = services.BuildServiceProvider();
+if (embeddingsAvailable && !string.IsNullOrEmpty(corpusDir))
+{
+    var (documents, chunks) = await serviceProvider.GetRequiredService<DirectoryCorpusLoader>().LoadAsync(corpusDir);
+    Console.WriteLine($"corpus: indexed {documents} document(s) as {chunks} chunk(s) from {corpusDir}");
+}
+
 var runner = serviceProvider.GetRequiredService<AgentRunner>();
 
 AgentRunResult result;

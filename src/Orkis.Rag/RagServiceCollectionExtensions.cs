@@ -32,6 +32,7 @@ public static class RagServiceCollectionExtensions
         services.TryAddSingleton<IChunkStore>(static sp => sp.GetRequiredService<InMemoryVectorStore>());
         services.TryAddSingleton<IRetriever>(static sp => sp.GetRequiredService<InMemoryVectorStore>());
         services.TryAddSingleton<DocumentIngestor>();
+        services.TryAddSingleton<DirectoryCorpusLoader>();
         return services;
     }
 

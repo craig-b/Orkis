@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenAI;
 using Orkis.Artifacts;
 using Orkis.Clients;
+using Orkis.Memory;
+using Orkis.Retrieval;
 using Orkis.Runs;
 using Orkis.Sandboxing;
 using Orkis.Supervision;
@@ -114,6 +116,47 @@ public static class DaemonApplication
                     )
                 )
             );
+        }
+
+        // Memory and retrieval need an embeddings endpoint; with one configured, the
+        // SQLite memory store plus save/search tools come on, and a corpus directory
+        // additionally enables search_corpus (reranked with the chat model).
+        if (!settings.Offline && settings.EmbeddingModel is { Length: > 0 } embeddingModel)
+        {
+            services.AddSingleton(
+                new OpenAIClient(settings.ApiKey).GetEmbeddingClient(embeddingModel).AsIEmbeddingGenerator()
+            );
+            services.AddOrkisSqliteMemoryStore(options =>
+                options.DatabasePath =
+                    settings.MemoryDatabasePath
+                    ?? throw new InvalidOperationException("Embeddings are on but no memory database path is set.")
+            );
+            services.AddSingleton<ITool>(provider => new SaveMemoryTool(
+                provider.GetRequiredService<IMemoryStore>(),
+                timeProvider: provider.GetRequiredService<TimeProvider>()
+            ));
+            services.AddSingleton<ITool>(provider => new SearchMemoriesTool(
+                provider.GetRequiredService<IMemoryStore>()
+            ));
+
+            if (settings.CorpusDirectory is { Length: > 0 })
+            {
+                services.AddOrkisInMemoryRag();
+                services.AddOrkisHtmlParser();
+                services.AddOrkisPdfParser();
+                services.AddOrkisSqliteVectorStore(options =>
+                    options.DatabasePath =
+                        settings.CorpusDatabasePath
+                        ?? throw new InvalidOperationException(
+                            "A corpus directory is set but no corpus database path is."
+                        )
+                );
+                services.AddOrkisChatClientReranker();
+                services.AddSingleton<ITool>(provider => new RetrievalTool(
+                    provider.GetRequiredService<IRetriever>(),
+                    provider.GetService<IReranker>()
+                ));
+            }
         }
 
         services.AddSingleton<ITool>(provider => new ShellTool(

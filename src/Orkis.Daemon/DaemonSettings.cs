@@ -36,6 +36,21 @@ public sealed record DaemonSettings
     /// <summary>Model id for live runs. Ignored when offline.</summary>
     public string? Model { get; init; }
 
+    /// <summary>
+    /// Embedding model id, or <see langword="null"/> when the provider has no
+    /// embeddings endpoint — memory and retrieval stay off without one.
+    /// </summary>
+    public string? EmbeddingModel { get; init; }
+
+    /// <summary>SQLite database for agent memory; used when embeddings are on.</summary>
+    public string? MemoryDatabasePath { get; init; }
+
+    /// <summary>Directory of documents to index for search_corpus, or <see langword="null"/>.</summary>
+    public string? CorpusDirectory { get; init; }
+
+    /// <summary>SQLite database for the indexed corpus; used when a corpus directory is set.</summary>
+    public string? CorpusDatabasePath { get; init; }
+
     /// <summary>Isolation sandbox: <c>process</c>, <c>bubblewrap</c>, or <c>firecracker</c>.</summary>
     public string Sandbox { get; init; } = "process";
 

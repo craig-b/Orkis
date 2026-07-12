@@ -46,11 +46,6 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
 
 ## Tier 2 — Medium-term (design mostly clear, larger or dependent)
 
-- **Demo embedding provider** `[idea]` — the demo host wires no
-  `IEmbeddingGenerator`, so the built memory and retrieval capabilities are
-  library-only there. Wire one for live OpenAI runs (Anthropic exposes no embeddings
-  endpoint) or a small local model, so `save_memory`/`search_memories`/`search_corpus`
-  become demoable.
 - **Vector-native retrieval backends** `[idea]` — pgvector / Qdrant behind the same
   `IChunkStore`/`IRetriever` interfaces, for corpora beyond what `SqliteVectorStore`'s
   full-scan cosine handles (tens of thousands of chunks). pgvector doubles as part of

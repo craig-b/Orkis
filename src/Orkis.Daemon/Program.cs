@@ -72,6 +72,15 @@ var settings = new DaemonSettings
     Provider = provider,
     ApiKey = selectedKey,
     Model = offline ? null : model,
+    // Memory and retrieval need an embeddings endpoint (OpenAI has one; Anthropic
+    // does not) — they stay off without it.
+    EmbeddingModel =
+        !offline && provider == "openai"
+            ? Environment.GetEnvironmentVariable("ORKIS_EMBEDDING_MODEL") ?? "text-embedding-3-small"
+            : null,
+    MemoryDatabasePath = Environment.GetEnvironmentVariable("ORKIS_MEMORY_DB") ?? Path.Combine(dataRoot, "memory.db"),
+    CorpusDirectory = Environment.GetEnvironmentVariable("ORKIS_CORPUS_DIR"),
+    CorpusDatabasePath = Path.Combine(dataRoot, "corpus.db"),
     Sandbox = sandbox,
     FirecrackerKernelPath = firecrackerKernel,
     FirecrackerRootfsPath = firecrackerRootfs,
@@ -80,10 +89,23 @@ var settings = new DaemonSettings
 
 var app = DaemonApplication.Create(settings);
 
+if (settings.EmbeddingModel is not null && settings.CorpusDirectory is { Length: > 0 } corpusDirectory)
+{
+    var (documents, chunks) = await app
+        .Services.GetRequiredService<Orkis.Retrieval.DirectoryCorpusLoader>()
+        .LoadAsync(corpusDirectory);
+    Console.WriteLine($"corpus: indexed {documents} document(s) as {chunks} chunk(s) from {corpusDirectory}");
+}
+
 Console.WriteLine($"orkis daemon | listening on unix:{settings.SocketPath}");
 Console.WriteLine($"mode: {(offline ? "offline (scripted model)" : $"live ({provider}: {model})")}");
 Console.WriteLine($"sandbox: {sandbox} isolation + host execution (granted per approval)");
 Console.WriteLine($"supervision: queue (default) | yolo{(offline ? "" : " | ai")}");
+Console.WriteLine(
+    settings.EmbeddingModel is null
+        ? "memory: off (no embeddings endpoint for this provider)"
+        : $"memory: on ({settings.EmbeddingModel}){(settings.CorpusDirectory is null ? "" : " + corpus retrieval")}"
+);
 Console.WriteLine($"data: {dataRoot}");
 
 await app.RunAsync();

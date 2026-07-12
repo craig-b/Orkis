@@ -153,6 +153,15 @@ approves routine actions — optionally requiring a sandbox — denies clear pol
 violations with a reason the agent sees, and escalates anything it is unsure of
 into the same approval inbox for a human.
 
+On live OpenAI runs — the wired provider with an embeddings endpoint — agent
+memory switches on automatically, in the CLI host and the daemon alike:
+`save_memory` and `search_memories` persist to a SQLite store (`ORKIS_MEMORY_DB`
+overrides the path), and relevant memories are recalled into each new run.
+Pointing `ORKIS_CORPUS_DIR` at a directory of documents (.txt/.md/.html/.pdf)
+indexes it at startup into a persistent vector store and adds a `search_corpus`
+tool, its results reranked by the chat model. `ORKIS_EMBEDDING_MODEL` overrides
+the default embedding model (text-embedding-3-small).
+
 ## The daemon
 
 `Orkis.Daemon` hosts the same stack as a long-lived process — the dockerd shape.
