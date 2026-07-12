@@ -15,6 +15,7 @@
     <ProjectReference Include="..\Orkis.Runs.FileSystem\Orkis.Runs.FileSystem.csproj" />
     <ProjectReference Include="..\Orkis.Sandbox.Firecracker\Orkis.Sandbox.Firecracker.csproj" />
     <ProjectReference Include="..\Orkis.Sandbox.Process\Orkis.Sandbox.Process.csproj" />
+    <ProjectReference Include="..\Orkis.Tools.Mcp\Orkis.Tools.Mcp.csproj" />
     <ProjectReference
       Include="..\Orkis.Tools.Generator\Orkis.Tools.Generator.csproj"
       OutputItemType="Analyzer"

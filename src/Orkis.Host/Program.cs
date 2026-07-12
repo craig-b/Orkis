@@ -271,17 +271,41 @@ services.AddOrkisPricing(cost =>
 
 // Progressive disclosure demo: get_utc_now stays always-on; roll_dice lives only in
 // the catalogue, so the model must search_tools before it can roll.
+var catalogTools = new List<ITool>();
 foreach (var tool in DemoTools.CreateOrkisTools())
 {
     if (tool.Descriptor.Name == "roll_dice")
     {
-        services.AddOrkisToolCatalog(_ => [new ConsoleLoggingTool(tool)]);
+        catalogTools.Add(new ConsoleLoggingTool(tool));
     }
     else
     {
         services.AddSingleton<ITool>(new ConsoleLoggingTool(tool));
     }
 }
+
+// MCP servers contribute tools through the catalogue, so large servers cost no
+// context until the model searches for them. ORKIS_MCP_SERVER="command arg1 arg2".
+// Annotations are not trusted: every MCP tool is Mutating and passes supervision.
+if (Environment.GetEnvironmentVariable("ORKIS_MCP_SERVER") is { Length: > 0 } mcpCommandLine)
+{
+    var mcpParts = mcpCommandLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    var mcpOptions = new McpStdioServerOptions { Command = mcpParts[0], Name = Path.GetFileName(mcpParts[0]) };
+    foreach (var argument in mcpParts.Skip(1))
+    {
+        mcpOptions.Arguments.Add(argument);
+    }
+
+    var mcpToolSet = await McpToolSet.ConnectAsync(mcpOptions);
+    services.AddSingleton(mcpToolSet); // Provider disposal shuts the server down.
+    catalogTools.AddRange(mcpToolSet.Tools.Select(ITool (tool) => new ConsoleLoggingTool(tool)));
+    Console.WriteLine(
+        $"mcp: {mcpOptions.Name} contributes {mcpToolSet.Tools.Count} tool(s) to the catalogue: "
+            + string.Join(", ", mcpToolSet.Tools.Select(t => t.Descriptor.Name))
+    );
+}
+
+services.AddOrkisToolCatalog(_ => catalogTools);
 
 // Shell commands share one persistent workspace per sandbox type: files written by
 // one command are there for the next, across runs and restarts. Files never move

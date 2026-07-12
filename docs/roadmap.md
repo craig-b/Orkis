@@ -40,12 +40,6 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 1 — Near-term (well-specified, clear next steps)
 
-- **MCP client** `[idea]` — consume Model Context Protocol servers as Orkis tools via
-  the official `ModelContextProtocol` .NET SDK: an adapter mapping MCP tool schemas to
-  `ToolDescriptor` (risk from MCP annotations where present, `Mutating` otherwise) and
-  invocations to `ITool`, registered always-on or as `IToolCatalog` entries — the
-  natural home for large MCP servers. stdio transport first. Prerequisites (per-run
-  scoping, catalogue) are built.
 - **NuGet lock files** `[idea]` — `RestorePackagesWithLockFile` + `--locked-mode` in CI
   to pin the transitive graph (the `UglyToad.PdfPig` name-squat encounter is the
   motivating example). Currently blocked: enabling the property breaks `.slnx`

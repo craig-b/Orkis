@@ -135,6 +135,14 @@ dotnet run --project src/Orkis.Host -- --approve <call-id> h   # or s; or --deny
 dotnet run --project src/Orkis.Host -- --resume <run-id>
 ```
 
+MCP servers plug in over stdio and contribute their tools through the searchable
+catalogue — large servers cost no context until the model actually needs them.
+Tool annotations are not trusted by default, so MCP tools pass supervision:
+
+```sh
+ORKIS_MCP_SERVER="npx -y @modelcontextprotocol/server-everything" dotnet run --project src/Orkis.Host -- ...
+```
+
 With `--ai` (live runs only), the model itself is the first-line reviewer: it
 approves routine actions — optionally requiring a sandbox — denies clear policy
 violations with a reason the agent sees, and escalates anything it is unsure of

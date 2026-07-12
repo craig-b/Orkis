@@ -10,6 +10,7 @@
         <Project Path="src/Orkis.Sandbox.Firecracker/Orkis.Sandbox.Firecracker.csproj" />
         <Project Path="src/Orkis.Sandbox.Process/Orkis.Sandbox.Process.csproj" />
         <Project Path="src/Orkis.Tools.Generator/Orkis.Tools.Generator.csproj" />
+        <Project Path="src/Orkis.Tools.Mcp/Orkis.Tools.Mcp.csproj" />
     </Folder>
     <Folder Name="/tests/">
         <Project Path="tests/Orkis.Core.Tests/Orkis.Core.Tests.csproj" />
@@ -18,5 +19,6 @@
         <Project Path="tests/Orkis.Sandbox.Firecracker.Tests/Orkis.Sandbox.Firecracker.Tests.csproj" />
         <Project Path="tests/Orkis.Sandbox.Process.Tests/Orkis.Sandbox.Process.Tests.csproj" />
         <Project Path="tests/Orkis.Tools.Generator.Tests/Orkis.Tools.Generator.Tests.csproj" />
+        <Project Path="tests/Orkis.Tools.Mcp.Tests/Orkis.Tools.Mcp.Tests.csproj" />
     </Folder>
 </Solution>
