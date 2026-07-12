@@ -49,6 +49,7 @@ public sealed class AgentRunner
     private readonly ICostCalculator _costCalculator;
     private readonly IToolCatalog? _toolCatalog;
     private readonly IMemoryStore? _memoryStore;
+    private readonly IContextPolicy? _contextPolicy;
     private readonly FrozenDictionary<string, ITool> _tools;
 
     public AgentRunner(
@@ -59,7 +60,8 @@ public sealed class AgentRunner
         TimeProvider timeProvider,
         ICostCalculator? costCalculator = null,
         IToolCatalog? toolCatalog = null,
-        IMemoryStore? memoryStore = null
+        IMemoryStore? memoryStore = null,
+        IContextPolicy? contextPolicy = null
     )
     {
         ArgumentNullException.ThrowIfNull(chatClient);
@@ -75,6 +77,7 @@ public sealed class AgentRunner
         _costCalculator = costCalculator ?? NullCostCalculator.Instance;
         _toolCatalog = toolCatalog;
         _memoryStore = memoryStore;
+        _contextPolicy = contextPolicy;
         _tools = tools.ToFrozenDictionary(t => t.Descriptor.Name);
     }
 
@@ -271,8 +274,34 @@ public sealed class AgentRunner
             }
 
             var declaredTools = await BuildRunToolsAsync(state, cancellationToken).ConfigureAwait(false);
+
+            IReadOnlyList<ChatMessage> promptMessages = state.Messages;
+            if (_contextPolicy is not null)
+            {
+                var view = await _contextPolicy
+                    .ComposeAsync(
+                        new ContextRequest
+                        {
+                            Transcript = state.Messages,
+                            Cache = state.ContextCache,
+                            ObservedCharsPerToken =
+                                state.ObservedPromptTokens > 0
+                                    ? (double)state.ObservedPromptChars / state.ObservedPromptTokens
+                                    : null,
+                        },
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
+                foreach (var (key, value) in view.CacheUpdates)
+                {
+                    state.ContextCache[key] = value;
+                }
+
+                promptMessages = view.Messages;
+            }
+
             var response = await _chatClient
-                .GetResponseAsync(state.Messages, BuildChatOptions(declaredTools), cancellationToken)
+                .GetResponseAsync(promptMessages, BuildChatOptions(declaredTools), cancellationToken)
                 .ConfigureAwait(false);
 
             foreach (var message in response.Messages)
@@ -286,6 +315,13 @@ public sealed class AgentRunner
                 var outputTokens = usage.OutputTokenCount ?? 0;
                 state.InputTokens += inputTokens;
                 state.OutputTokens += outputTokens;
+
+                // Calibrate the chars-per-token estimate context policies rely on.
+                if (inputTokens > 0)
+                {
+                    state.ObservedPromptChars += ContextEstimator.CountChars(promptMessages);
+                    state.ObservedPromptTokens += inputTokens;
+                }
 
                 if (inputTokens > 0)
                 {

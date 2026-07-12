@@ -54,4 +54,17 @@ internal sealed class AgentRunState
 
     /// <summary>Sequence number the next checkpoint will use.</summary>
     public long NextSequence { get; set; }
+
+    /// <summary>
+    /// Cache written by the context policy (summaries keyed by transcript range), so
+    /// compaction work survives checkpoint and resume. The transcript itself is never
+    /// rewritten.
+    /// </summary>
+    public Dictionary<string, string> ContextCache { get; init; } = new(StringComparer.Ordinal);
+
+    /// <summary>Characters sent across model calls, for chars-per-token calibration.</summary>
+    public long ObservedPromptChars { get; set; }
+
+    /// <summary>Provider-reported input tokens across model calls, for calibration.</summary>
+    public long ObservedPromptTokens { get; set; }
 }

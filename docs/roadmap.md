@@ -53,14 +53,6 @@ The through-lines these ideas are meant to respect:
   library-only there. Wire one for live OpenAI runs (Anthropic exposes no embeddings
   endpoint) or a small local model, so `save_memory`/`search_memories`/`search_corpus`
   become demoable.
-- **Context management** `[idea]` — design settled at the top level: run state keeps
-  the full transcript forever (checkpoints, audit, future evals); an `IContextPolicy`
-  the runner consults per model call produces the compact view, caching summaries in
-  state without replacing what they summarize. Tiering: stub aged tool outputs first,
-  then summarize old spans; compaction is chunky (threshold → floor) to spare prompt
-  caches; token estimates self-calibrate from reported usage. Owns the window
-  priority order (system > recent turns > memories > retrieval > old history).
-  Build last, against real transcripts.
 - **Vector-native retrieval backends** `[idea]` — pgvector / Qdrant behind the same
   `IChunkStore`/`IRetriever` interfaces, for corpora beyond what `SqliteVectorStore`'s
   full-scan cosine handles (tens of thousands of chunks). pgvector doubles as part of
