@@ -6,6 +6,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Orkis.Client\Orkis.Client.csproj" />
     <ProjectReference Include="..\Orkis.Core\Orkis.Core.csproj" />
     <ProjectReference Include="..\Orkis.Runs.FileSystem\Orkis.Runs.FileSystem.csproj" />
     <ProjectReference Include="..\Orkis.Sandbox.Firecracker\Orkis.Sandbox.Firecracker.csproj" />

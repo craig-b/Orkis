@@ -71,10 +71,20 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   and sandboxes — exposed as HTTP/JSON over an owner-only Unix domain socket, with the
   typed run-event stream served as SSE (live fan-out via `RunEventBroker` teeing the
   durable log). The daemon is one composition root among several, never required: the
-  libraries stay embeddable in-process. What remains: thin clients (a CLI verb set
-  pointing at the socket, the compose-stack web UI, editor integrations), an
-  `Orkis.Client` package sharing the wire records, MCP servers in the daemon
-  composition, and bearer-token auth over TCP for remote clients.
+  libraries stay embeddable in-process. Built since: the `Orkis.Client` typed client
+  (wire records, SSE reader with an `UnknownRunEvent` fallback for forward
+  compatibility) and the `orkis` CLI (attached runs with inline approval prompts,
+  `ps`/`logs -f`/`approvals`/`approve`/`deny`/`resume`/`artifacts`). What remains:
+  the TUI (below), the compose-stack web UI, editor integrations, MCP servers in
+  the daemon composition, and bearer-token auth over TCP for remote clients.
+
+  **TUI decision (July 2026):** same binary as the CLI — an `orkis dash` verb —
+  not a separate tool; both share `Orkis.Client`. First cut renders with
+  Spectre.Console's live layout (runs + approvals + event tail), graduating to
+  Terminal.Gui only if interaction depth demands it — that would also be the moment
+  to split binaries. Prerequisite protocol growth: a daemon-wide `GET /v1/events`
+  stream (all runs multiplexed; `RunEventBroker` needs a wildcard subscription), so
+  a dashboard is one connection instead of N streams plus approval polling.
 
   Instance identity is the endpoint, dockerd-style: clients select a daemon with an
   endpoint flag/env (`--socket`/`ORKIS_SOCKET`, defaulting to the well-known path, and

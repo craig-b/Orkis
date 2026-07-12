@@ -25,7 +25,9 @@
     <PackageVersion Include="PdfPig" Version="0.1.15" />
     <!-- Direct reference to override Microsoft.Data.Sqlite's transitive 2.1.11 bundle,
          which carries a known vulnerability (GHSA-2m69-gcr7-jv3q). -->
+    <PackageVersion Include="Spectre.Console" Version="0.57.2" />
     <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>

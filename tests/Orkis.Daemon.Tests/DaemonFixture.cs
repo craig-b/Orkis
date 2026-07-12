@@ -18,6 +18,9 @@ public sealed class DaemonFixture : IAsyncLifetime
 
     public HttpClient Client { get; private set; } = null!;
 
+    /// <summary>The daemon's socket, for tests that bring their own client.</summary>
+    public string SocketPath { get; private set; } = null!;
+
     public static JsonSerializerOptions JsonOptions { get; } =
         new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
 
@@ -25,6 +28,7 @@ public sealed class DaemonFixture : IAsyncLifetime
     {
         _root = Directory.CreateTempSubdirectory("orkis-daemon-tests-").FullName;
         var socketPath = Path.Combine(_root, "orkis.sock");
+        SocketPath = socketPath;
 
         var settings = new DaemonSettings
         {

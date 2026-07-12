@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Orkis.Agents;
 using Orkis.Artifacts;
+using Orkis.Client;
 using Orkis.Runs;
 using Orkis.Sandboxing;
 using Orkis.Supervision;

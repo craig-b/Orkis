@@ -2,7 +2,7 @@ using System.Text.Json;
 using Orkis.Agents;
 using Orkis.Tools;
 
-namespace Orkis.Daemon;
+namespace Orkis.Client;
 
 /// <summary>Body of <c>POST /v1/runs</c>.</summary>
 public sealed record StartRunRequest

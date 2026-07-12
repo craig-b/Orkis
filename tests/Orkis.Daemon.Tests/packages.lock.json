@@ -194,6 +194,12 @@
       "orkis.abstractions": {
         "type": "Project"
       },
+      "orkis.client": {
+        "type": "Project",
+        "dependencies": {
+          "Orkis.Abstractions": "[1.0.0, )"
+        }
+      },
       "orkis.core": {
         "type": "Project",
         "dependencies": {
@@ -209,6 +215,7 @@
           "Anthropic.SDK": "[5.10.0, )",
           "Microsoft.Extensions.AI": "[10.7.0, )",
           "Microsoft.Extensions.AI.OpenAI": "[10.7.0, )",
+          "Orkis.Client": "[1.0.0, )",
           "Orkis.Core": "[1.0.0, )",
           "Orkis.Runs.FileSystem": "[1.0.0, )",
           "Orkis.Sandbox.Firecracker": "[1.0.0, )",

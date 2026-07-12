@@ -1,6 +1,8 @@
 <Solution>
     <Folder Name="/src/">
         <Project Path="src/Orkis.Abstractions/Orkis.Abstractions.csproj" />
+        <Project Path="src/Orkis.Cli/Orkis.Cli.csproj" />
+        <Project Path="src/Orkis.Client/Orkis.Client.csproj" />
         <Project Path="src/Orkis.Core/Orkis.Core.csproj" />
         <Project Path="src/Orkis.Daemon/Orkis.Daemon.csproj" />
         <Project Path="src/Orkis.Host/Orkis.Host.csproj" />
@@ -16,6 +18,7 @@
         <Project Path="src/Orkis.Tools.Mcp/Orkis.Tools.Mcp.csproj" />
     </Folder>
     <Folder Name="/tests/">
+        <Project Path="tests/Orkis.Client.Tests/Orkis.Client.Tests.csproj" />
         <Project Path="tests/Orkis.Core.Tests/Orkis.Core.Tests.csproj" />
         <Project Path="tests/Orkis.Daemon.Tests/Orkis.Daemon.Tests.csproj" />
         <Project Path="tests/Orkis.Memory.Sqlite.Tests/Orkis.Memory.Sqlite.Tests.csproj" />

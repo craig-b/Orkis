@@ -48,6 +48,8 @@ src/
   Orkis.Sandbox.*         Sandbox execution implementations (process, bubblewrap, Firecracker)
   Orkis.Host              Composition root and demo entry point (CLI, in-process)
   Orkis.Daemon            Composition root as a long-lived service (HTTP over a Unix socket)
+  Orkis.Client            Typed client for the daemon protocol (commands + event stream)
+  Orkis.Cli               `orkis` — thin command-line client over Orkis.Client
 tests/
 ```
 
@@ -161,26 +163,39 @@ the two composition roots are interchangeable over shared state:
 
 ```sh
 dotnet run --project src/Orkis.Daemon -- --offline     # or live, with an API key
+```
 
+The `orkis` CLI is the thin client (`--socket` or `ORKIS_SOCKET` selects a daemon;
+the well-known path is the default). `orkis run` attaches to the run's event
+stream and, when the run pauses for supervision, prompts for the decision right
+in the terminal — approve on the host, approve sandboxed, or deny — then resumes
+and keeps streaming:
+
+```sh
+alias orkis="dotnet run --project src/Orkis.Cli --"
+orkis run "Roll 3 dice."                 # attach; prompt inline on approvals
+orkis run "..." --supervisor yolo        # or: --detach to just print the run id
+orkis ps                                 # registry (adopts checkpoints on restart)
+orkis logs <run-id> -f                   # replay history, then tail live
+orkis approvals                          # pending decisions
+orkis approve <run> <call> --sandbox standard --resume
+orkis deny <run> <call> --reason "not like this" --resume
+orkis artifacts
+```
+
+Supervision is queue-based by default (`--supervisor` selects `yolo` or, on live
+runs, `ai`), so every risky action is a pending approval on the wire.
+
+The protocol is plain HTTP/JSON over the socket — everything the CLI does works
+from `curl` too. A run's history streams as Server-Sent Events whose payloads are
+the run's typed events — the same self-describing JSON the durable log stores,
+with the SSE id carrying the event sequence, so `Last-Event-ID` reconnection
+replays exactly the missed events:
+
+```sh
 SOCK=${XDG_RUNTIME_DIR:-~/.local/share/orkis}/orkis/orkis.sock
 curl --unix-socket "$SOCK" http://d/v1/runs -X POST \
   -H 'content-type: application/json' -d '{"prompt":"Roll 3 dice."}'
-curl --unix-socket "$SOCK" http://d/v1/runs                  # registry (adopts checkpoints on restart)
-curl --unix-socket "$SOCK" http://d/v1/approvals             # pending decisions
-curl --unix-socket "$SOCK" http://d/v1/approvals/<run>/<call> -X POST \
-  -H 'content-type: application/json' -d '{"verdict":"approve","sandboxLevel":"standard"}'
-curl --unix-socket "$SOCK" http://d/v1/runs/<run>/resume -X POST
-```
-
-Supervision is queue-based by default (`supervisorKey` selects `yolo` or, on live
-runs, `ai`), so every risky action is a pending approval on the wire.
-
-A run's history streams as Server-Sent Events whose payloads are the run's typed
-events — the same self-describing JSON the durable log stores, with the SSE id
-carrying the event sequence, so `Last-Event-ID` reconnection replays exactly the
-missed events:
-
-```sh
 curl -N --unix-socket "$SOCK" "http://d/v1/runs/<run>/events?follow=true"
 ```
 

@@ -66,6 +66,12 @@
       "orkis.abstractions": {
         "type": "Project"
       },
+      "orkis.client": {
+        "type": "Project",
+        "dependencies": {
+          "Orkis.Abstractions": "[1.0.0, )"
+        }
+      },
       "orkis.core": {
         "type": "Project",
         "dependencies": {
