@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Orkis.Artifacts;
 using Orkis.Runs;
 
@@ -16,7 +17,8 @@ namespace Orkis.Client;
 /// </summary>
 public sealed class OrkisClient : IDisposable
 {
-    private static readonly JsonSerializerOptions JsonOptions = SseRunEvents.JsonOptions;
+    // Source-generated metadata, so the whole client trims cleanly (see OrkisJsonContext).
+    private static readonly OrkisJsonContext Json = OrkisJson.Context;
 
     private readonly HttpClient _http;
 
@@ -92,7 +94,7 @@ public sealed class OrkisClient : IDisposable
         using var response = await _http
             .GetAsync(new Uri("/v1/capabilities", UriKind.Relative), cancellationToken)
             .ConfigureAwait(false);
-        return await ReadAsync<CapabilitiesResponse>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.CapabilitiesResponse, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Starts a run; the daemon executes it in the background.</summary>
@@ -104,9 +106,9 @@ public sealed class OrkisClient : IDisposable
         ArgumentNullException.ThrowIfNull(request);
 
         using var response = await _http
-            .PostAsJsonAsync(new Uri("/v1/runs", UriKind.Relative), request, JsonOptions, cancellationToken)
+            .PostAsJsonAsync(new Uri("/v1/runs", UriKind.Relative), request, Json.StartRunRequest, cancellationToken)
             .ConfigureAwait(false);
-        return await ReadAsync<RunAcceptedResponse>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.RunAcceptedResponse, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>All runs the daemon knows, most recently updated first.</summary>
@@ -115,7 +117,7 @@ public sealed class OrkisClient : IDisposable
         using var response = await _http
             .GetAsync(new Uri("/v1/runs", UriKind.Relative), cancellationToken)
             .ConfigureAwait(false);
-        return await ReadAsync<IReadOnlyList<RunResponse>>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.RunResponseList, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The run's current state, or <see langword="null"/> when unknown.</summary>
@@ -131,7 +133,7 @@ public sealed class OrkisClient : IDisposable
             return null;
         }
 
-        return await ReadAsync<RunResponse>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.RunResponse, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Resumes a paused or interrupted run from its checkpoint.</summary>
@@ -146,7 +148,7 @@ public sealed class OrkisClient : IDisposable
                 cancellationToken
             )
             .ConfigureAwait(false);
-        return await ReadAsync<RunAcceptedResponse>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.RunAcceptedResponse, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Sends a chat's next user message; the daemon runs the next turn.</summary>
@@ -163,11 +165,11 @@ public sealed class OrkisClient : IDisposable
             .PostAsJsonAsync(
                 new Uri($"/v1/runs/{Uri.EscapeDataString(runId)}/messages", UriKind.Relative),
                 new ContinueRunRequest { Message = message },
-                JsonOptions,
+                Json.ContinueRunRequest,
                 cancellationToken
             )
             .ConfigureAwait(false);
-        return await ReadAsync<RunAcceptedResponse>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.RunAcceptedResponse, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -192,7 +194,7 @@ public sealed class OrkisClient : IDisposable
             return null;
         }
 
-        return await ReadAsync<IReadOnlyList<TranscriptMessage>>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.TranscriptMessageList, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Pending approvals, optionally scoped to one run.</summary>
@@ -205,7 +207,7 @@ public sealed class OrkisClient : IDisposable
         using var response = await _http
             .GetAsync(new Uri(uri, UriKind.Relative), cancellationToken)
             .ConfigureAwait(false);
-        return await ReadAsync<IReadOnlyList<ApprovalResponse>>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.ApprovalResponseList, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Decides a pending approval. Decisions are immutable once made.</summary>
@@ -227,7 +229,7 @@ public sealed class OrkisClient : IDisposable
                     UriKind.Relative
                 ),
                 decision,
-                JsonOptions,
+                Json.DecideApprovalRequest,
                 cancellationToken
             )
             .ConfigureAwait(false);
@@ -273,7 +275,7 @@ public sealed class OrkisClient : IDisposable
         using var response = await _http
             .GetAsync(new Uri("/v1/artifacts", UriKind.Relative), cancellationToken)
             .ConfigureAwait(false);
-        return await ReadAsync<IReadOnlyList<ArtifactInfo>>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.ArtifactInfoList, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>All schedules.</summary>
@@ -282,7 +284,7 @@ public sealed class OrkisClient : IDisposable
         using var response = await _http
             .GetAsync(new Uri("/v1/schedules", UriKind.Relative), cancellationToken)
             .ConfigureAwait(false);
-        return await ReadAsync<IReadOnlyList<ScheduleResponse>>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.ScheduleResponseList, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Creates a schedule.</summary>
@@ -294,9 +296,14 @@ public sealed class OrkisClient : IDisposable
         ArgumentNullException.ThrowIfNull(request);
 
         using var response = await _http
-            .PostAsJsonAsync(new Uri("/v1/schedules", UriKind.Relative), request, JsonOptions, cancellationToken)
+            .PostAsJsonAsync(
+                new Uri("/v1/schedules", UriKind.Relative),
+                request,
+                Json.CreateScheduleRequest,
+                cancellationToken
+            )
             .ConfigureAwait(false);
-        return await ReadAsync<ScheduleResponse>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.ScheduleResponse, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Updates a schedule's fields (null leaves a field unchanged). Returns null when it did not exist.</summary>
@@ -313,7 +320,7 @@ public sealed class OrkisClient : IDisposable
             .PatchAsJsonAsync(
                 new Uri($"/v1/schedules/{Uri.EscapeDataString(id)}", UriKind.Relative),
                 request,
-                JsonOptions,
+                Json.UpdateScheduleRequest,
                 cancellationToken
             )
             .ConfigureAwait(false);
@@ -322,7 +329,7 @@ public sealed class OrkisClient : IDisposable
             return null;
         }
 
-        return await ReadAsync<ScheduleResponse>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.ScheduleResponse, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Deletes a schedule. Returns <see langword="false"/> when it did not exist.</summary>
@@ -350,7 +357,7 @@ public sealed class OrkisClient : IDisposable
         using var response = await _http
             .GetAsync(new Uri("/v1/mcp-servers", UriKind.Relative), cancellationToken)
             .ConfigureAwait(false);
-        return await ReadAsync<IReadOnlyList<McpServerResponse>>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.McpServerResponseList, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Connects an MCP server to the live daemon; its tools join the catalogue.</summary>
@@ -362,9 +369,14 @@ public sealed class OrkisClient : IDisposable
         ArgumentNullException.ThrowIfNull(request);
 
         using var response = await _http
-            .PostAsJsonAsync(new Uri("/v1/mcp-servers", UriKind.Relative), request, JsonOptions, cancellationToken)
+            .PostAsJsonAsync(
+                new Uri("/v1/mcp-servers", UriKind.Relative),
+                request,
+                Json.AddMcpServerRequest,
+                cancellationToken
+            )
             .ConfigureAwait(false);
-        return await ReadAsync<McpServerResponse>(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(response, Json.McpServerResponse, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Disconnects an MCP server. Returns <see langword="false"/> when it was not connected.</summary>
@@ -451,10 +463,14 @@ public sealed class OrkisClient : IDisposable
 
     public void Dispose() => _http.Dispose();
 
-    private static async Task<T> ReadAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<T> ReadAsync<T>(
+        HttpResponseMessage response,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken cancellationToken
+    )
     {
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
-        var payload = await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken).ConfigureAwait(false);
+        var payload = await response.Content.ReadFromJsonAsync(typeInfo, cancellationToken).ConfigureAwait(false);
         return payload ?? throw new OrkisApiException(response.StatusCode, "The daemon returned an empty response.");
     }
 

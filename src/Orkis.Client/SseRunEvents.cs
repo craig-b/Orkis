@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Orkis.Runs;
 
 namespace Orkis.Client;
@@ -14,11 +13,6 @@ namespace Orkis.Client;
 /// </summary>
 public static class SseRunEvents
 {
-    internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-    };
-
     /// <summary>Yields the events in <paramref name="stream"/> as they arrive.</summary>
     public static async IAsyncEnumerable<RunEvent> ReadAsync(
         Stream stream,
@@ -48,7 +42,7 @@ public static class SseRunEvents
 
         try
         {
-            var runEvent = JsonSerializer.Deserialize<RunEvent>(json, JsonOptions);
+            var runEvent = JsonSerializer.Deserialize(json, OrkisJson.Context.RunEvent);
             if (runEvent is not null)
             {
                 return runEvent;
