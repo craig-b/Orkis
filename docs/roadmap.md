@@ -81,9 +81,21 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   applied to time. Schedules and prompt templates unify: a schedule is a saved
   template with a cron attached.
 - **Web UI** `[idea]` — the compose-stack UI, and the thing that makes the daemon
-  usable day-to-day. Served by the daemon itself as static assets (same socket/token
-  auth, no CORS, unchanged in compose); speaks only the public JSON+SSE protocol, so
-  the UI is a forcing function for protocol completeness. Surfaces, roughly in order:
+  usable day-to-day. **Design settled (July 2026): the daemon has no face and no
+  network.** The daemon listens on its Unix socket only; a separate `Orkis.Web`
+  gateway owns everything network — the TCP bind, auth, TLS (or the reverse proxy in
+  front), the UI assets — and reverse-proxies `/v1/*` over the socket. Clients are
+  unchanged: a URL endpoint now means the gateway. Auth is staged: loopback is exempt
+  (like the socket), remote requires the bearer token (generated and persisted by the
+  gateway, or `ORKIS_TOKEN`) — exchanged once at a login page for a cookie session
+  (cookies ride `EventSource`, unlike Authorization headers), with **passkeys
+  (WebAuthn, `Fido2NetLib`) as the v2 login**: enroll from an authenticated session,
+  log in with a touch thereafter, the token demoted to break-glass recovery. Secure
+  context caveat: passkeys work on localhost but need TLS for remote origins. UI
+  stack: TypeScript + Lit + esbuild — three pinned npm dependencies, no more, with
+  the lockfile discipline mirrored (`npm ci`, Dependabot npm ecosystem). The UI
+  speaks only the public JSON+SSE protocol, so it stays disposable. Surfaces, roughly
+  in order:
   runs + live event feed (`/v1/events`), approval inbox with grant buttons (the same
   sandbox/network lattice as the CLI prompt), capabilities/status, chat view (once
   chats land), cost accounting, artifact browser (needs a content endpoint —

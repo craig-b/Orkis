@@ -50,6 +50,7 @@ src/
   Orkis.Daemon            Composition root as a long-lived service (HTTP over a Unix socket)
   Orkis.Client            Typed client for the daemon protocol (commands + event stream)
   Orkis.Cli               `orkis` — thin command-line client over Orkis.Client
+  Orkis.Web               Network gateway: web UI assets, auth, /v1 proxy to the socket
 tests/
 ```
 
@@ -231,12 +232,23 @@ curl -N --unix-socket "$SOCK" "http://d/v1/runs/<run>/events?follow=true"
 ```
 
 Access control is the socket itself (owner-only permissions); the daemon refuses
-to start when another instance already listens on its socket. For remote clients,
-`ORKIS_LISTEN=http://0.0.0.0:7433` adds a TCP endpoint requiring a bearer token on
-every request — from `ORKIS_TOKEN`, or generated once and persisted owner-only in
-the data root. Clients pass a URL instead of a socket path (`--socket
-http://host:7433 --token …`, or `ORKIS_HOST`/`ORKIS_TOKEN`). Terminate TLS in a
-reverse proxy; the daemon speaks plain HTTP.
+to start when another instance already listens on its socket. The daemon has no
+network listener by design — network exposure is a capability owned by a separate
+gateway:
+
+```sh
+dotnet run --project src/Orkis.Web       # http://127.0.0.1:7420
+```
+
+`Orkis.Web` serves the web UI assets and reverse-proxies `/v1/*` over the
+daemon's socket (SSE streams through unbuffered). It owns auth: loopback is
+exempt (trust is local, like the socket), while remote requests need the bearer
+token — from `ORKIS_TOKEN`, or generated once and persisted owner-only in the
+data root — either as a header or exchanged at `/auth/session` for a cookie
+session (which is how the browser logs in). Clients pass the gateway URL instead
+of a socket path (`--socket http://host:7420 --token …`, or
+`ORKIS_HOST`/`ORKIS_TOKEN`). `ORKIS_WEB_LISTEN` binds beyond loopback; TLS
+belongs to a reverse proxy in front.
 
 ## Development
 
