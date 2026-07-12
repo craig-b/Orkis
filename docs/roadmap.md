@@ -48,17 +48,34 @@ The through-lines these ideas are meant to respect:
 
 ## Tier 2 — Medium-term (design mostly clear, larger or dependent)
 
-- **Agent-written memory: implementation + loop wiring** `[abstraction]` — `IMemoryStore`
-  exists; needs a backend and a design for how the loop reads/writes memory. Overlaps
-  context management.
-- **Context management** `[idea]` — token budgeting, compaction, and summarisation as the
-  transcript grows; deciding what retrieved material enters the window.
+- **Agent-written memory** `[abstraction]` — design settled: explicit `save_memory` /
+  `search_memories` tools (writes are `Mutating`, so supervision sees what the agent
+  wants to remember; a wrong scope is corrected by deny-with-reason, never by the
+  approver rewriting arguments — supervision gates, it does not ghost-write).
+  `MemoryEntry.Scope` is first-class with `"global"` the default; runs carry a
+  `MemoryScope` (the `WorkspaceKey` pattern — a scheduled job scopes its own memory);
+  reads search the run's scope plus global. Top-K relevant memories inject at run
+  start, framed as untrusted recollections (memory is model-authored content
+  re-entering prompts — a prompt-injection persistence vector; provenance metadata,
+  supervised writes, and host-policy retention are the mitigations). Backend:
+  the `SqliteVectorStore` pattern transplanted.
+- **Context management** `[idea]` — design settled at the top level: run state keeps
+  the full transcript forever (checkpoints, audit, future evals); an `IContextPolicy`
+  the runner consults per model call produces the compact view, caching summaries in
+  state without replacing what they summarize. Tiering: stub aged tool outputs first,
+  then summarize old spans; compaction is chunky (threshold → floor) to spare prompt
+  caches; token estimates self-calibrate from reported usage. Owns the window
+  priority order (system > recent turns > memories > retrieval > old history).
+  Build last, against real transcripts.
 - **Vector-native retrieval backends** `[idea]` — pgvector / Qdrant behind the same
   `IChunkStore`/`IRetriever` interfaces, for corpora beyond what `SqliteVectorStore`'s
   full-scan cosine handles (tens of thousands of chunks). pgvector doubles as part of
   the compose stack's Postgres multi-duty story.
-- **Retrieval wired into the agent loop** `[idea]` — expose retrieval as a tool or a
-  context source; depends on the context-management design.
+- **Retrieval wired into the agent loop** `[idea]` — design settled: a
+  `search_corpus` tool over `IRetriever` (the agent decides when to look, consistent
+  with `search_tools`), reranking top-N to top-K inside the tool when an `IReranker`
+  is registered, results rendered with chunk ids and source metadata so answers can
+  cite. Ambient per-message injection can come later as a context-policy feature.
 - **Execution floor** `[idea]` — a global minimum sandbox level ("everything runs in
   Firecracker"). Distinct from workspace flow policy: this governs where *code* runs, not
   where *data* goes.
