@@ -240,6 +240,18 @@ gateway:
 dotnet run --project src/Orkis.Web       # http://127.0.0.1:7420
 ```
 
+The web UI (TypeScript + Lit, deliberately three npm dependencies) builds once
+with Node and is then plain static files:
+
+```sh
+cd ui && npm ci && npm run build     # → ui/dist
+ORKIS_WEB_ASSETS=ui/dist dotnet run --project src/Orkis.Web
+```
+
+It gives you runs with a live event feed, the approval inbox (same grant
+buttons as the CLI prompt), multi-turn chat, and the capabilities page — all
+over the public JSON+SSE protocol, so the UI stays disposable.
+
 `Orkis.Web` serves the web UI assets and reverse-proxies `/v1/*` over the
 daemon's socket (SSE streams through unbuffered). It owns auth: loopback is
 exempt (trust is local, like the socket), while remote requests need the bearer

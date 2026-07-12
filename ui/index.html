@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>orkis</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --panel: #f4f4f5;
+        --line: #e4e4e7;
+        --dim: #71717a;
+        --accent: #4f46e5;
+        --ok: #16a34a;
+        --ok-bg: #dcfce7;
+        --warn: #d97706;
+        --warn-bg: #fef3c7;
+        --info-bg: #e0e7ff;
+        --err: #dc2626;
+        --err-bg: #fee2e2;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #18181b;
+          --panel: #27272a;
+          --line: #3f3f46;
+          --dim: #a1a1aa;
+          --accent: #818cf8;
+          --ok: #4ade80;
+          --ok-bg: #14532d;
+          --warn: #fbbf24;
+          --warn-bg: #451a03;
+          --info-bg: #312e81;
+          --err: #f87171;
+          --err-bg: #7f1d1d;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: color-mix(in srgb, var(--bg) 5%, currentcolor);
+        font-family: system-ui, sans-serif;
+        color-scheme: light dark;
+      }
+    </style>
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <orkis-app></orkis-app>
+  </body>
+</html>

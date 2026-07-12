@@ -34,11 +34,7 @@ public static class GatewayApplication
         ArgumentNullException.ThrowIfNull(settings);
 
         var listen = new Uri(settings.ListenUrl);
-        var builder = WebApplication.CreateBuilder();
-        if (settings.AssetsPath is { Length: > 0 } assetsPath)
-        {
-            builder.Environment.WebRootPath = assetsPath;
-        }
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { WebRootPath = settings.AssetsPath });
 
         builder.WebHost.ConfigureKestrel(kestrel =>
             kestrel.Listen(

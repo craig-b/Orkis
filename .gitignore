@@ -483,3 +483,4 @@ $RECYCLE.BIN/
 
 # Claude Code local settings
 .claude/settings.local.json
+ui/dist/

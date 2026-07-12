@@ -30,3 +30,7 @@ jobs:
 
       - name: Test
         run: dotnet test --no-build --configuration Release
+
+      - name: Build web UI
+        working-directory: ui
+        run: npm ci && npm run build
