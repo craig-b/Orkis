@@ -22,7 +22,10 @@ if [ -n "$net" ]; then
   ip link set eth0 up
   ip addr add "$addr" dev eth0
   ip route add default via "$gateway"
-  printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /tmp/resolv.conf
+  # Gateway first: the host may run a DNS forwarder there, riding its own
+  # resolution. musl queries all nameservers in parallel, so the public
+  # fallbacks keep resolution working where no forwarder is provisioned.
+  printf 'nameserver %s\nnameserver 1.1.1.1\nnameserver 8.8.8.8\n' "$gateway" > /tmp/resolv.conf
 fi
 
 if grep -q orkis.mode=agent /proc/cmdline && [ -f /opt/orkis-agent.py ] && command -v python3 > /dev/null; then

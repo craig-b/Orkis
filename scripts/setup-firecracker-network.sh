@@ -8,7 +8,9 @@
 #     user, so the sandbox can attach VMs to them WITHOUT any privileges,
 #   - an nftables table ("orkis") that blocks guest traffic to the host, all
 #     private/link-local/multicast ranges (including the cloud metadata address
-#     169.254.169.254), allowing public egress only,
+#     169.254.169.254), allowing public egress only — with one exception: the
+#     gateway's port 53, where a dnsmasq forwarder (when installed) lets guests
+#     resolve through the host's own resolution,
 #   - IPv4 forwarding (persisted via /etc/sysctl.d/99-orkis.conf).
 #
 # Guests get static addresses 172.30.0.(tap index + 2)/24, gateway 172.30.0.1,
@@ -37,6 +39,10 @@ fi
 
 remove() {
   echo "Removing Orkis network setup..."
+  if [ -f /run/orkis-dns.pid ]; then
+    kill "$(cat /run/orkis-dns.pid)" 2> /dev/null || true
+    rm -f /run/orkis-dns.pid
+  fi
   nft delete table inet orkis 2> /dev/null || true
   if command -v iptables > /dev/null; then
     iptables -D FORWARD -i "$BRIDGE" -j ACCEPT 2> /dev/null || true
@@ -95,7 +101,11 @@ delete table inet orkis
 table inet orkis {
   chain input {
     type filter hook input priority -10; policy accept;
-    # Guests may not talk to the host itself, on any port.
+    # Guests resolve through the DNS forwarder on the gateway; everything else
+    # on the host stays unreachable.
+    iifname "$BRIDGE" ip daddr $GATEWAY udp dport 53 accept
+    iifname "$BRIDGE" ip daddr $GATEWAY tcp dport 53 accept
+    # Guests may not talk to the host itself, on any other port.
     iifname "$BRIDGE" drop
   }
   chain forward {
@@ -122,6 +132,23 @@ if command -v iptables > /dev/null; then
     || iptables -I FORWARD -i "$BRIDGE" -j ACCEPT
   iptables -C FORWARD -o "$BRIDGE" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2> /dev/null \
     || iptables -I FORWARD -o "$BRIDGE" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+fi
+
+# A DNS forwarder on the gateway lets guests resolve through the host's own
+# resolution (which works wherever the host's does) instead of depending on
+# public resolvers, which some hosts block. Guests list the gateway first with
+# public fallbacks, so this is an upgrade, not a requirement.
+DNSMASQ_PID=/run/orkis-dns.pid
+if command -v dnsmasq > /dev/null; then
+  echo "DNS forwarder (dnsmasq) on $GATEWAY:53..."
+  if [ -f "$DNSMASQ_PID" ]; then
+    kill "$(cat "$DNSMASQ_PID")" 2> /dev/null || true
+    rm -f "$DNSMASQ_PID"
+  fi
+  dnsmasq --port=53 --listen-address="$GATEWAY" --bind-interfaces --no-hosts --pid-file="$DNSMASQ_PID"
+else
+  echo "dnsmasq not found: guests will use public DNS resolvers directly, which"
+  echo "hosts that restrict outbound DNS may block. Install dnsmasq and re-run."
 fi
 
 # firewalld evaluates its own forward chains for every table, and an unzoned

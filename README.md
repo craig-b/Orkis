@@ -92,7 +92,9 @@ Sandboxed code has no network by default. Firecracker VMs can be granted
 public-internet-only egress — the host, LAN/private ranges, and the cloud
 metadata address stay unreachable — after a one-time, auditable host setup
 (bridge, a user-owned TAP pool, and nftables rules; idempotent, re-run after
-reboot):
+reboot). With dnsmasq installed, the setup also runs a DNS forwarder on the
+bridge gateway, so guests resolve through the host's own resolution instead of
+depending on public resolvers (which some hosts block):
 
 ```sh
 sudo scripts/setup-firecracker-network.sh        # provision (--remove undoes it)

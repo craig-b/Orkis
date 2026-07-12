@@ -119,14 +119,14 @@ Tier 2. NuGet lock files landed once SDK 10.0.3xx fixed lock-file generation for
   warm-VM guest agent (built): exposing session lifecycle to the *model* (background
   processes, port forwarding, attach/detach). Much softened now that disk state
   survives VM death — the disappearance problem is memory-only.
-- **Firecracker networking — Phase 2: domain allowlist** `[idea]` — an SNI-filtering egress
-  proxy (no TLS interception) plus DNS control, for per-run domain scoping. The DNS half
-  has a concrete first step: guests currently hardcode public resolvers, which fails on
-  hosts that restrict outbound DNS. A forwarder bound to the bridge IP
-  (`172.30.0.1:53`, provisioned by the network setup script), guest `resolv.conf`
-  pointing at it, and one targeted nft exception (guest → host UDP 53 only) ahead of
-  the host-block rule lets guest DNS ride the host's own resolution — and the
-  forwarder is the natural hook for the eventual allowlist.
+- **Firecracker networking — Phase 2: domain allowlist** `[scaffold]` — an SNI-filtering
+  egress proxy (no TLS interception) plus DNS control, for per-run domain scoping. The
+  DNS half's first step is built: the network setup script provisions a dnsmasq
+  forwarder on the gateway (`172.30.0.1:53`) with a targeted nft exception ahead of the
+  host block, and guests list the gateway first with public fallbacks (musl queries in
+  parallel, so nothing depends on the forwarder being present). Guest DNS thereby rides
+  the host's own resolution wherever the forwarder is provisioned — and dnsmasq is the
+  natural hook for the eventual per-run domain allowlist.
 - **Sandbox capability advertising** `[idea]` — a `SandboxCapabilities` surface (network
   flag, available commands, notes) shown proactively in the tool description and folded
   into error results, so the model stops thrashing through unavailable commands. Should
