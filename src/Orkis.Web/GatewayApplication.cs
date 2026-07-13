@@ -76,13 +76,15 @@ public static class GatewayApplication
         var sessions = new ConcurrentDictionary<string, DateTimeOffset>(StringComparer.Ordinal);
         var expectedToken = Encoding.UTF8.GetBytes(settings.BearerToken);
 
-        // Auth: loopback is trusted like the daemon's socket (unless forced), the
-        // login endpoint is reachable by definition, and everything else needs the
-        // token or a session.
+        // Auth gates the API only. The UI shell (static assets) and the /auth/session login
+        // endpoint stay public, so a browser can load the app and present the sign-in form
+        // even when it reaches the gateway over a published port — where the request is not
+        // loopback and the token is therefore required. Loopback is trusted like the daemon's
+        // socket (unless forced); everything under /v1 otherwise needs the token or a session.
         app.Use(
             (context, next) =>
             {
-                if (context.Request.Path.StartsWithSegments("/auth", StringComparison.Ordinal))
+                if (!context.Request.Path.StartsWithSegments("/v1", StringComparison.Ordinal))
                 {
                     return next(context);
                 }

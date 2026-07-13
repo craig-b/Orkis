@@ -96,6 +96,18 @@ public sealed class GatewayTests(GatewayFixture fixture) : IClassFixture<Gateway
     }
 
     [Fact]
+    public async Task TheUiShellIsReachableWithoutCredentials()
+    {
+        // The app shell must load unauthenticated so the browser can render the sign-in
+        // form; only the API is gated. (Auth is forced on in the fixture, so this proves it
+        // is the path, not loopback, that exempts it.)
+        using var http = new HttpClient();
+        using var response = await http.GetAsync(new Uri($"{fixture.GatewayUrl}/"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task TheWrongTokenCannotOpenASession()
     {
         using var http = new HttpClient();
