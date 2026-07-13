@@ -22,8 +22,11 @@ services:
       - ./config.json:/etc/orkis/config.json:ro
       - orkis-data:/var/lib/orkis
       - orkis-sock:/run/orkis
-    environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    # All of .env is passed through, so whichever provider key your config references
+    # (ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_KEY, …) reaches the daemon.
+    env_file:
+      - path: .env
+        required: false
     # command: ["--offline"]   # keyless demo (scripted model), no API key needed
 
   gateway:
@@ -37,8 +40,9 @@ services:
     volumes:
       - ./config.json:/etc/orkis/config.json:ro
       - orkis-sock:/run/orkis
-    environment:
-      ORKIS_TOKEN: ${ORKIS_TOKEN:-}
+    env_file:
+      - path: .env
+        required: false
 
 volumes:
   orkis-data:

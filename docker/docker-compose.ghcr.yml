@@ -22,8 +22,11 @@ services:
       - orkis-data:/var/lib/orkis
       - orkis-sock:/run/orkis
       # - ./firecracker:/var/lib/orkis/firecracker   # vmlinux + rootfs.ext4
-    environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    # All of .env is passed through, so whichever provider key your config references
+    # (ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_KEY, …) reaches the daemon.
+    env_file:
+      - path: .env
+        required: false
 
   gateway:
     image: ghcr.io/craig-b/orkis-web:latest
@@ -34,8 +37,9 @@ services:
     volumes:
       - ./config.json:/etc/orkis/config.json:ro
       - orkis-sock:/run/orkis
-    environment:
-      ORKIS_TOKEN: ${ORKIS_TOKEN:-}
+    env_file:
+      - path: .env
+        required: false
 
 volumes:
   orkis-data:
