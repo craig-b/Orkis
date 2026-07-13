@@ -1,0 +1,81 @@
+name: Release
+
+# Builds the self-contained binaries. On a version tag (v1.2.3) they are attached to a
+# GitHub Release; a manual run just uploads them as workflow artifacts. Testing lives in
+# ci.yml — a tag is expected to be cut from a green main.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the release and upload its assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      RID: linux-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # Native AOT (the CLI) compiles native code, so it needs a C toolchain and zlib.
+      - name: Install Native AOT prerequisites
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build web UI
+        working-directory: ui
+        run: npm ci && npm run build
+
+      # Built-in env vars (not ${{ }} interpolation) so a crafted tag can't inject.
+      - name: Determine version
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=0.0.0-dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A supplied RID engages the publish tuning in Publish.props (self-contained,
+      # single-file/R2R for the services, Native AOT for the CLI). Publish does its own
+      # non-locked restore, so the RID-specific packs need not be in the committed lock.
+      - name: Publish
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          dotnet publish src/Orkis.Cli    -c Release -r "$RID" -p:Version="$VERSION" -o dist/cli
+          dotnet publish src/Orkis.Daemon -c Release -r "$RID" -p:Version="$VERSION" -o dist/daemon
+          dotnet publish src/Orkis.Web    -c Release -r "$RID" -p:Version="$VERSION" -o dist/web
+          rm -rf dist/web/wwwroot && cp -r ui/dist dist/web/wwwroot
+
+      - name: Package
+        run: |
+          mkdir -p out
+          tar -C dist/cli    -czf "out/orkis-cli-$RID.tar.gz"    .
+          tar -C dist/daemon -czf "out/orkis-daemon-$RID.tar.gz" .
+          tar -C dist/web    -czf "out/orkis-web-$RID.tar.gz"    .
+          (cd out && sha256sum *.tar.gz > SHA256SUMS.txt)
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: orkis-${{ env.RID }}
+          path: out/*
+
+      - name: Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true
