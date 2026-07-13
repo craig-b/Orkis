@@ -6,10 +6,14 @@
     <AssemblyName>orkis</AssemblyName>
   </PropertyGroup>
 
-  <!-- The CLI is trim-safe (source-generated JSON; Spectre + System.CommandLine trim
-       clean), so it publishes trimmed — a ~4x size cut over the other executables. -->
+  <!-- The CLI is fully static-analysis-clean (source-generated JSON, AOT-safe enum
+       converters; Spectre + System.CommandLine AOT-compile without warnings), so it
+       ships as a Native AOT binary: ~9 MB, no runtime, single-digit-millisecond start.
+       AOT supersedes the shared single-file/ReadyToRun settings. -->
   <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
-    <PublishTrimmed>true</PublishTrimmed>
+    <PublishAot>true</PublishAot>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishReadyToRun>false</PublishReadyToRun>
   </PropertyGroup>
 
   <ItemGroup>

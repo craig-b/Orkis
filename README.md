@@ -310,18 +310,23 @@ everything else (single-file, ReadyToRun, invariant globalization, and trimming 
 CLI) comes from `Publish.props`:
 
 ```sh
-dotnet publish src/Orkis.Cli    -c Release -r linux-x64   # orkis         ~31 MB (trimmed + R2R)
+dotnet publish src/Orkis.Cli    -c Release -r linux-x64   # orkis         ~9 MB (Native AOT)
 dotnet publish src/Orkis.Daemon -c Release -r linux-x64   # Orkis.Daemon  ~162 MB
 dotnet publish src/Orkis.Web    -c Release -r linux-x64   # Orkis.Web     ~116 MB
 ```
 
-Swap the RID for another target (`linux-arm64`, `osx-arm64`, `win-x64`, …). The CLI is
-trimmed — its JSON goes through a source-generated context (`OrkisJsonContext`), so no
-reflection metadata is stripped — cutting it to roughly a quarter of an untrimmed
-self-contained build. The daemon and gateway are not trimmed: ASP.NET plus the model
-SDKs are not trim-safe, and as long-lived processes they gain little from it. All of this
-is gated on the RID being supplied, so `dotnet build`, `dotnet run`, and `dotnet test`
-are untouched.
+Swap the RID for another target (`linux-arm64`, `osx-arm64`, `win-x64`, …). The CLI ships
+as a **Native AOT** binary: its JSON goes through a source-generated context
+(`OrkisJsonContext`) with AOT-safe enum converters, and Spectre.Console + System.CommandLine
+AOT-compile cleanly, so there is no runtime reflection to break — the result is a ~9 MB
+native executable that starts in single-digit milliseconds with no runtime dependency.
+Building it needs a C toolchain on the build machine (`clang` and `zlib`; `apt-get install
+clang zlib1g-dev` on Debian/Ubuntu), and AOT compiles for the host architecture, so
+cross-arch builds want a matching runner (which is why release builds run in CI). The
+daemon and gateway are self-contained single-file + ReadyToRun, not trimmed: ASP.NET plus
+the model SDKs are not trim/AOT-safe, and as long-lived processes they gain little from it.
+All of this is gated on the RID being supplied, so `dotnet build`, `dotnet run`, and
+`dotnet test` are untouched.
 
 ## Development
 
