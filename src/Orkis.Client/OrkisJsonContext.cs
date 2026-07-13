@@ -1,7 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Orkis.Agents;
 using Orkis.Artifacts;
 using Orkis.Runs;
+using Orkis.Tools;
 
 namespace Orkis.Client;
 
@@ -38,17 +40,21 @@ namespace Orkis.Client;
 internal sealed partial class OrkisJsonContext : JsonSerializerContext;
 
 /// <summary>
-/// The one configured context instance the client serializes through. Enums ride a
-/// camelCase string converter to match the daemon's wire form exactly; that converter
-/// is AOT-only-unsafe (fine under trimming), and is the single thing left to replace
-/// if the client is ever taken to Native AOT.
+/// The one configured context instance the client serializes through. Enums ride
+/// camelCase string converters to match the daemon's wire form exactly. The generic
+/// <see cref="JsonStringEnumConverter{TEnum}"/> (one per serialized enum) is statically
+/// analyzable, so the client stays clean under both trimming and Native AOT.
 /// </summary>
 internal static class OrkisJson
 {
     internal static readonly OrkisJsonContext Context = new(
         new JsonSerializerOptions(JsonSerializerDefaults.Web)
         {
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+            Converters =
+            {
+                new JsonStringEnumConverter<RunStatus>(JsonNamingPolicy.CamelCase),
+                new JsonStringEnumConverter<ToolRisk>(JsonNamingPolicy.CamelCase),
+            },
         }
     );
 }
