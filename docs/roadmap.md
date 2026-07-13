@@ -110,12 +110,13 @@ The through-lines these ideas are meant to respect:
   behavioural regression suites, and LLM-as-judge scoring.
 - **Firecracker jailer + teardown hardening** `[idea]` — run Firecracker under its jailer
   and harden per-VM teardown for production use.
-- **Batteries-included distribution (compose stack)** `[idea]` — the imagined end state:
-  a preconfigured docker-compose-style stack — the daemon, web UI, Postgres, and an
-  S3-compatible object store (e.g. MinIO) — plus a TUI client from outside. Postgres pulls
-  multi-duty behind several abstractions (checkpoint store, pgvector retrieval, memory,
-  supervision queue); the object store backs the artifact store. Its real value today is
-  design pressure: every abstraction must eventually have an out-of-process,
-  shared-infrastructure backend, so no interface may assume single-process state.
-  Sandboxing stays bubblewrap/Firecracker, and a containerised daemon needs `/dev/kvm`
-  passthrough for the Firecracker path.
+- **Batteries-included distribution (compose stack)** `[scaffold]` — the packaging skeleton
+  is built (`docker/`): self-contained daemon + gateway images published to GHCR on a `v*`
+  tag, a dev (`build:`) and a deploy (`image:`) compose file sharing one bind-mounted config
+  and the daemon's Unix socket, and Firecracker-in-container behind a `/dev/kvm` opt-in (the
+  daemon auto-falls-back otherwise). What remains is the "batteries" — the out-of-process,
+  shared-infrastructure backends the stack exists to host: Postgres multi-duty behind several
+  abstractions (checkpoint store, pgvector retrieval, memory, supervision queue) and an
+  S3-compatible object store (e.g. MinIO) for the artifact store. Its lasting value is design
+  pressure: every abstraction must eventually have a shared-infrastructure backend, so no
+  interface may assume single-process state.
