@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+# The gateway: a self-contained single-file binary plus the built UI assets. No .NET
+# runtime is shipped — the runtime is bundled inside the binary; runtime-deps carries
+# only the native libraries it links.
+
+# 1. Build the UI (TypeScript 7 native compiler + esbuild) with a real Node.
+FROM node:20-slim AS ui
+WORKDIR /ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci
+COPY ui/ ./
+RUN npm run build
+
+# 2. Publish the gateway.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish src/Orkis.Web -c Release -r linux-x64 -o /app
+COPY --from=ui /ui/dist /app/wwwroot
+
+# 3. Minimal runtime.
+FROM mcr.microsoft.com/dotnet/runtime-deps:10.0
+COPY --from=build /app /app
+# Both processes read the same config file, bind-mounted read-only here.
+ENV ORKIS_CONFIG=/etc/orkis/config.json
+EXPOSE 7420
+ENTRYPOINT ["/app/Orkis.Web"]

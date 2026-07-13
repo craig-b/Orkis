@@ -1,0 +1,24 @@
+{
+  // Shared by the daemon and gateway: bind-mounted read-only into both containers at
+  // /etc/orkis/config.json. Paths are container paths matching the compose volumes.
+  // Secrets are referenced by env-var name and supplied by compose — never stored here.
+
+  "socket": "/run/orkis/orkis.sock", // shared volume between daemon and gateway
+  "dataDir": "/var/lib/orkis", // persistent volume (checkpoints, workspaces, memory, …)
+  "sandbox": "bubblewrap", // "process" (no privileges) | "bubblewrap" | "firecracker" (needs /dev/kvm + guest images)
+
+  "providers": {
+    "anthropic": { "kind": "anthropic", "apiKeyEnv": "ANTHROPIC_API_KEY" }
+  },
+  "models": {
+    "sonnet": { "provider": "anthropic", "model": "claude-sonnet-5" }
+  },
+  "defaultModel": "sonnet",
+
+  // The gateway's slice. Omit "token" to auto-generate + persist one under dataDir, or set
+  // ORKIS_TOKEN in compose. requireAuth:false leaves loopback exempt (trust the network).
+  "web": {
+    "listen": "http://0.0.0.0:7420",
+    "requireAuth": false
+  }
+}

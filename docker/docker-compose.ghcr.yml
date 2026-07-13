@@ -1,0 +1,42 @@
+# Deploy stack: pulls prebuilt images from GHCR. `docker compose -f docker/docker-compose.ghcr.yml pull && ... up -d`.
+# Public packages need no auth; private ones need `docker login ghcr.io` (a PAT with read:packages).
+# Replace the owner if you forked. Same config file and socket wiring as the dev stack.
+name: orkis
+
+services:
+  daemon:
+    image: ghcr.io/craig-b/orkis-daemon:latest
+    restart: unless-stopped
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    # --- Firecracker microVM isolation (optional) -------------------------------------
+    # Set "sandbox": "firecracker" in config.json, grant KVM + TAP, and mount guest images
+    # (build them with scripts/setup-firecracker.sh). Needs a host that exposes /dev/kvm
+    # (bare metal, or a VM with nested virtualization). Without these the daemon falls back.
+    #   devices: ["/dev/kvm", "/dev/net/tun"]
+    #   cap_add: ["NET_ADMIN"]
+    #   privileged: true            # simplest; ext4 loop-mounts want it
+    volumes:
+      - ./config.json:/etc/orkis/config.json:ro
+      - orkis-data:/var/lib/orkis
+      - orkis-sock:/run/orkis
+      # - ./firecracker:/var/lib/orkis/firecracker   # vmlinux + rootfs.ext4
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+  gateway:
+    image: ghcr.io/craig-b/orkis-web:latest
+    restart: unless-stopped
+    depends_on: [daemon]
+    ports:
+      - "7420:7420"
+    volumes:
+      - ./config.json:/etc/orkis/config.json:ro
+      - orkis-sock:/run/orkis
+    environment:
+      ORKIS_TOKEN: ${ORKIS_TOKEN:-}
+
+volumes:
+  orkis-data:
+  orkis-sock:

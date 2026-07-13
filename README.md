@@ -328,6 +328,17 @@ the model SDKs are not trim/AOT-safe, and as long-lived processes they gain litt
 All of this is gated on the RID being supplied, so `dotnet build`, `dotnet run`, and
 `dotnet test` are untouched.
 
+## Docker
+
+`docker/` packages the daemon and gateway as images — the SDK builds them, but nothing
+shipped carries the .NET runtime (the services are self-contained). The CLI stays a native
+binary (from the Release), since it is a client, not a service. One `config.json`
+bind-mounts into both the daemon and gateway, which
+share the daemon's Unix socket over a volume. `docker compose -f docker/docker-compose.yml
+up --build` runs it; images publish to GHCR on a `v*` tag. The daemon auto-selects the
+strongest sandbox the container is granted (process → bubblewrap → Firecracker, the last
+needing `/dev/kvm`), so one image scales with privilege. See [docker/README.md](docker/README.md).
+
 ## Development
 
 Formatting is enforced in CI with [CSharpier](https://csharpier.com). Enable the

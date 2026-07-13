@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+# The daemon: a self-contained single-file binary plus the sandbox tools it shells out
+# to. No .NET runtime is shipped (it rides inside the binary); runtime-deps supplies the
+# native libraries, and apt supplies the isolation tooling.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish src/Orkis.Daemon -c Release -r linux-x64 -o /app
+
+FROM mcr.microsoft.com/dotnet/runtime-deps:10.0
+
+# bubblewrap: the unprivileged sandbox. e2fsprogs: mkfs.ext4 / e2fsck for workspace
+# images. iproute2 + nftables: per-VM TAP + restricted-egress filtering. firecracker: the
+# microVM VMM, used only when /dev/kvm and guest images are present — otherwise the daemon
+# auto-falls-back to bubblewrap, then process. So one image scales with granted privilege.
+# FIRECRACKER_VERSION is resolved to the latest release at build time unless pinned.
+ARG FIRECRACKER_VERSION=
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      bubblewrap e2fsprogs iproute2 nftables ca-certificates curl \
+ && ver="${FIRECRACKER_VERSION:-$(curl -fsSL https://api.github.com/repos/firecracker-microvm/firecracker/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')}" \
+ && curl -fsSL "https://github.com/firecracker-microvm/firecracker/releases/download/v${ver}/firecracker-v${ver}-x86_64.tgz" | tar -xz -C /tmp \
+ && install -m0755 "/tmp/release-v${ver}-x86_64/firecracker-v${ver}-x86_64" /usr/local/bin/firecracker \
+ && rm -rf /tmp/release-* /var/lib/apt/lists/*
+
+COPY --from=build /app /app
+ENV ORKIS_CONFIG=/etc/orkis/config.json
+ENTRYPOINT ["/app/Orkis.Daemon"]

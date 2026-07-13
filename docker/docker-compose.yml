@@ -1,0 +1,45 @@
+# Dev stack: builds the images from source. `docker compose -f docker/docker-compose.yml up --build`.
+# For a pull-from-GHCR deploy, use docker-compose.ghcr.yml instead.
+#
+# The daemon owns state (the orkis-data volume); the gateway is the disposable network
+# face and reaches the daemon over the shared Unix socket (the orkis-sock volume). Both
+# containers run as root by default, so the daemon's owner-only socket is reachable by the
+# gateway; both bind-mount the one config file read-only.
+name: orkis
+
+services:
+  daemon:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.daemon
+    restart: unless-stopped
+    # bubblewrap needs unprivileged user namespaces; loosen the default seccomp/apparmor.
+    # (Not needed for sandbox: "process". See docker-compose.ghcr.yml for firecracker.)
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    volumes:
+      - ./config.json:/etc/orkis/config.json:ro
+      - orkis-data:/var/lib/orkis
+      - orkis-sock:/run/orkis
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    # command: ["--offline"]   # keyless demo (scripted model), no API key needed
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    restart: unless-stopped
+    depends_on: [daemon]
+    ports:
+      - "7420:7420"
+    volumes:
+      - ./config.json:/etc/orkis/config.json:ro
+      - orkis-sock:/run/orkis
+    environment:
+      ORKIS_TOKEN: ${ORKIS_TOKEN:-}
+
+volumes:
+  orkis-data:
+  orkis-sock:

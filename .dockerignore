@@ -1,0 +1,11 @@
+# Keep the build context small and the in-container restore clean.
+**/bin/
+**/obj/
+ui/node_modules/
+ui/dist/
+.git/
+.github/
+.vs/
+.idea/
+*.user
+scratchpad/
